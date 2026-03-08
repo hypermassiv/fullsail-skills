@@ -93,6 +93,48 @@ const result = await wallet.signAndExecuteTransaction({ transaction: tx })
 
 This pattern applies to every `*Transaction` method in the SDK: `swapTransaction`, `addLiquidityTransaction`, `claimTransaction`, `lockTransaction`, and all others. The build step is safe to call for dry-run inspection. The submit step is irreversible.
 
+---
+
+### Pool Data Sources: Chain Pool vs Backend Pool
+
+Full Sail has two pool data sources. Using the wrong one for a transaction causes stale-state failures.
+
+| Use Case | Method | Returns | Notes |
+|----------|--------|---------|-------|
+| Display only (TVL, APR, name, metadata) | `Pool.getById(poolId)` | Backend Pool | Pre-calculated; may lag by minutes |
+| Building any transaction | `Pool.getByIdFromChain(poolId)` | Chain Pool | Real-time tick state; always current |
+| Computing swap route | `Pool.getByIdFromChain(poolId)` | Chain Pool | Current tick index required for routing |
+| Fetching `gauge_id` for staking | `Pool.getById(poolId)` | Backend Pool | `gauge_id` is a backend-calculated field |
+
+**Hard rule: If the pool object will be passed to any `*Transaction` method, it MUST come from `Pool.getByIdFromChain(poolId)`.** Backend Pool data is acceptable only for read-only display.
+
+---
+
+### Token Types
+
+Full Sail has three token types. Understanding each prevents routing and redemption errors.
+
+| Token | Type | Purpose | Key Rule |
+|-------|------|---------|----------|
+| SAIL | Native governance token | Base liquid token; locked into veSAIL for governance | Never emitted directly; obtained by unlocking oSAIL (50% fee) or buying on market |
+| oSAIL | Option token (weekly emission) | Earned by staked liquidity positions; redeemable for SAIL/USDC or lockable as veSAIL | Expires 5 weeks after epoch start in which issued; check before every operation |
+| veSAIL | Vote-escrowed | Voting power derived from locked SAIL or oSAIL | Transferable and mergeable; voting weight resets on merge or split |
+
+> **oSAIL is an option token — it is not DEX-tradeable. Do not use oSAIL in swap routes.**
+
+---
+
+### oSAIL Expiry Rule
+
+> **Warning: oSAIL expires 5 weeks after the epoch start in which it was issued. Expired oSAIL cannot be redeemed for SAIL or USDC — it can only be locked as veSAIL.**
+
+Rules:
+- oSAIL is valid for redemption and locking for 5 weeks from the epoch it was issued
+- After the 5-week window: the only valid operation is locking as veSAIL
+- Attempting to redeem expired oSAIL will fail
+
+**Check oSAIL expiry before every oSAIL operation.** Do not assume oSAIL is valid. Verify the token's epoch against the current epoch before calling any oSAIL transaction method.
+
 ## Swaps
 
 <!-- Phase 2 -->
