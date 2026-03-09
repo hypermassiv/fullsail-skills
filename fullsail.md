@@ -1682,7 +1682,106 @@ Predictions submitted after the voting window closes are not accepted for that e
 
 ## Pitfalls
 
-<!-- Phase 6 -->
+### ERR-01: Treating `*Transaction()` Return as Submitted
+
+**Failure mode:** Agent calls any `*Transaction()` method (e.g., `Swap.swapTransaction()`, `Position.openTransaction()`) and assumes the transaction has been submitted to the network.
+
+**Correct behavior:** All `*Transaction()` methods return an unsigned `Transaction` object. The agent must sign and execute it separately via the wallet client.
+
+**Rule:** **Every `*Transaction()` call returns an unsigned `Transaction` — always sign and execute it before assuming any state change occurred.**
+
+```typescript
+// WRONG — tx is NOT submitted; it is only a constructed transaction object
+const tx = await fullSailSDK.Swap.swapTransaction({ ... });
+// State has NOT changed. Nothing was sent to the network.
+```
+
+```typescript
+// CORRECT — sign and execute via the wallet client after constructing
+const tx = await fullSailSDK.Swap.swapTransaction({ ... });
+const result = await suiClient.signAndExecuteTransaction({
+  transaction: tx,
+  signer: keypair,
+});
+```
+
+**See:** [§Protocol Fundamentals > Transaction Lifecycle Model](#transaction-lifecycle-model)
+
+---
+
+### ERR-02: Using oSAIL Without Checking Expiry
+
+**Failure mode:** Agent uses an oSAIL coin object in a lock, claim, or redemption operation without verifying it is within the current epoch's 5-week expiry window.
+
+**Correct behavior:** Before any oSAIL operation, retrieve the current epoch oSAIL via `Coin.getCurrentEpochOSail()` and check the expiry timestamp. Abort if expired.
+
+**Rule:** **Check oSAIL expiry before every oSAIL operation — expired oSAIL cannot be used.**
+
+```typescript
+// WRONG — using a static or cached oSAIL coin type without expiry check
+const lock = await fullSailSDK.Lock.createLockFromOSailTransaction({
+  oSailCoinType: staticOSailType, // may be expired — no check performed
+  // ...
+});
+```
+
+```typescript
+// CORRECT — fetch current epoch oSAIL, check expiry, then use its coinType
+const currentOSail = await fullSailSDK.Coin.getCurrentEpochOSail();
+if (Date.now() > currentOSail.expiry) {
+  throw new Error("oSAIL is expired for this epoch — cannot proceed");
+}
+const lock = await fullSailSDK.Lock.createLockFromOSailTransaction({
+  oSailCoinType: currentOSail.coinType, // confirmed fresh and unexpired
+  // ...
+});
+```
+
+**See:** [§Protocol Fundamentals > oSAIL Expiry Rule](#osail-expiry-rule), [§Rewards and oSAIL > oSAIL Expiry Check](#osail-expiry-check)
+
+---
+
+### ERR-03: Assuming All Rewards Auto-Claim
+
+**Failure mode:** Agent assumes all reward types (fees, pool rewards, oSAIL) are claimed automatically during liquidity operations.
+
+**Correct behavior:** Only oSAIL is auto-claimed during staking/unstaking operations. Trading fees and pool token rewards require explicit `claim*` calls.
+
+**Rule:** **Only oSAIL auto-claims during liquidity operations — fees and pool rewards require explicit `claim*` calls.**
+
+Consult the full reward type mapping before any claim operation. Each reward type has a distinct claim method and eligibility path.
+
+**See:** [§Rewards and oSAIL > Reward Claim Matrix](#reward-claim-matrix)
+
+---
+
+### ERR-04: Using Wrong Claim Method for Stake Status
+
+**Failure mode:** Agent calls staked-position claim methods on an unstaked position (or vice versa), causing transaction failure or claiming the wrong reward type.
+
+**Correct behavior:** Determine stake status first using `### Staked vs Unstaked Detection`, then follow the appropriate claim path in the decision tree.
+
+**Rule:** **Always determine position stake status before selecting a claim method — staked and unstaked positions use entirely different claim paths.**
+
+Check whether the position has a `stake_info` field populated before selecting any claim method. The decision tree maps each reward type to the correct method for each stake status.
+
+**See:** [§Liquidity Positions > Staked vs Unstaked Detection](#staked-vs-unstaked-detection), [§Rewards and oSAIL > Staked vs Unstaked Claim Path](#staked-vs-unstaked-claim-path)
+
+---
+
+### ERR-05: Merge or Split Resets Voting Weight
+
+**Failure mode:** Agent merges or splits locks after voting, expecting existing votes on those locks to persist.
+
+**Correct behavior:** `Lock.mergeTransaction()` and `Lock.splitTransaction()` both irreversibly reset ALL voting weight on the affected locks. After merge or split, the agent must re-cast all governance votes.
+
+**Rule:** **Merge and split are irreversible voting-weight resets — re-cast all votes on affected locks after either operation.**
+
+> **BLOCKING WARNING:** `mergeTransaction()` and `splitTransaction()` reset all voting weight on affected locks. This cannot be undone. Re-vote after any merge or split.
+
+**See:** [§Locks and veSAIL > Lock.mergeTransaction()](#lockmergetransaction), [§Locks and veSAIL > Lock.splitTransaction()](#locksplittransaction), [§Governance Voting > Vote Reset Behavior](#vote-reset-behavior)
+
+---
 
 ## Source of Truth
 
