@@ -1783,6 +1783,136 @@ Check whether the position has a `stake_info` field populated before selecting a
 
 ---
 
+### ERR-06: Setting Sender Before Wallet Connect
+
+**Failure mode:** Agent calls `setSenderAddress()` during SDK initialization, before wallet connection is confirmed.
+
+**Correct behavior:** `setSenderAddress()` must be called only after wallet connection is confirmed — not during SDK init.
+
+**Rule:** **Call `setSenderAddress()` after wallet connect, never during SDK initialization.**
+
+```typescript
+// WRONG — setSenderAddress called at init time, before wallet is connected
+const fullSailSDK = new FullSailSDK({ /* config */ });
+fullSailSDK.setSenderAddress(walletAddress); // wallet not yet confirmed connected
+```
+
+```typescript
+// CORRECT — setSenderAddress called in wallet connect callback, after connection confirmed
+const fullSailSDK = new FullSailSDK({ /* config */ });
+
+walletClient.on("connect", (wallet) => {
+  fullSailSDK.setSenderAddress(wallet.address); // called after confirmed connect
+});
+```
+
+**See:** [§Protocol Fundamentals > Two-Phase Sender Setup](#two-phase-sender-setup)
+
+---
+
+### ERR-07: Using Backend Pool Object for Transactions
+
+**Failure mode:** Agent fetches a pool via `Pool.getById()` (Backend Pool) and passes it into transaction methods, causing incorrect calculation or failure.
+
+**Correct behavior:** Transaction methods require a Chain Pool fetched via `Pool.getByIdFromChain()`. Backend Pool is for display and metadata only.
+
+**Rule:** **Use `Pool.getByIdFromChain()` for all transaction calls — `Pool.getById()` returns a Backend Pool valid only for display.**
+
+```typescript
+// WRONG — backend pool used for transaction; will produce incorrect results
+const pool = await fullSailSDK.Pool.getById({ poolId });
+// passing pool to transaction methods — incorrect
+```
+
+```typescript
+// CORRECT — chain pool fetched for transaction use
+const chainPool = await fullSailSDK.Pool.getByIdFromChain({ poolId });
+// chainPool is the correct object for all transaction methods
+```
+
+**See:** [§Protocol Fundamentals > Pool Data Sources: Chain Pool vs Backend Pool](#pool-data-sources-chain-pool-vs-backend-pool)
+
+---
+
+### ERR-08: Calling `removeLiquidityTransaction()` Without Staked Params
+
+**Failure mode:** Agent calls `Position.removeLiquidityTransaction()` on a staked position without passing the staked-position parameters, causing transaction failure.
+
+**Correct behavior:** There is no separate `unstakeTransaction()` in the SDK. To remove liquidity from a staked position, pass `positionStakeId`, `gaugeId`, and `oSailCoinType` directly to `removeLiquidityTransaction()`. See the full parameter set in the domain section.
+
+**Rule:** **There is no `unstakeTransaction()` — pass staked params directly to `removeLiquidityTransaction()` when the position is staked.**
+
+```typescript
+// WRONG — unstakeTransaction does not exist in the SDK
+await fullSailSDK.Position.unstakeTransaction({ positionId }); // ERROR: method does not exist
+```
+
+```typescript
+// CORRECT — pass staked params directly to removeLiquidityTransaction
+await fullSailSDK.Position.removeLiquidityTransaction({
+  // ... standard remove params ...
+  positionStakeId: position.stake_info.id, // required when position is staked
+  gaugeId,
+  oSailCoinType,
+});
+```
+
+**See:** [§Liquidity Positions > Position.removeLiquidityTransaction()](#positionremoveliquiditytransaction)
+
+---
+
+### ERR-09: Routing oSAIL Through DEX Swap
+
+**Failure mode:** Agent includes oSAIL as an input or output token in `Swap.getSwapRoute()` or `Swap.swapRouterTransaction()`, resulting in route failure.
+
+**Correct behavior:** oSAIL is not a standard DEX-tradeable token and has no swap routes. To convert oSAIL, use `Lock.createLockFromOSailTransaction()` (lock path) or the redemption options documented in `### oSAIL Redemption Options`.
+
+**Rule:** **oSAIL cannot be routed through the DEX — use the lock or redemption path instead.**
+
+```typescript
+// WRONG — oSAIL has no DEX route; this call will fail
+const route = await fullSailSDK.Swap.getSwapRoute({
+  coinInType: oSailCoinType, // fails — no DEX route for oSAIL
+  // ...
+});
+```
+
+```typescript
+// CORRECT — use the lock path to convert oSAIL
+await fullSailSDK.Lock.createLockFromOSailTransaction({
+  oSailCoinType,
+  // ...
+});
+```
+
+**See:** [§Swaps > oSAIL Swap Restriction](#osail-swap-restriction), [§Rewards and oSAIL > oSAIL Redemption Options](#osail-redemption-options)
+
+---
+
+### ERR-10: Reading State Immediately After Transaction Submit
+
+**Failure mode:** Agent reads on-chain state (position balance, lock amount, reward totals) in the same request immediately after submitting a transaction and acts on stale data.
+
+**Correct behavior:** On-chain state on Sui takes time to finalize after transaction submission. Do not read state in the same logical step as submit. Wait for transaction finality confirmation before querying state.
+
+**Rule:** **Do not read on-chain state immediately after submitting a transaction — wait for finality before querying updated state.**
+
+After calling `signAndExecuteTransaction()`, the returned result confirms submission but on-chain objects may not yet reflect the update. Query state only after the transaction has reached finality on the Sui network.
+
+---
+
+### Pre-Flight Checklist
+
+Before executing any Full Sail transaction, verify:
+
+- [ ] SDK sender is set — called after wallet connect, not at SDK init ([§Two-Phase Sender Setup](#two-phase-sender-setup))
+- [ ] Using Chain Pool from `getByIdFromChain()` — not Backend Pool from `getById()` ([§Pool Data Sources](#pool-data-sources-chain-pool-vs-backend-pool))
+- [ ] oSAIL expiry checked — fetched via `Coin.getCurrentEpochOSail()` and not past expiry ([§oSAIL Expiry Rule](#osail-expiry-rule))
+- [ ] Position stake status determined before selecting claim method ([§Staked vs Unstaked Claim Path](#staked-vs-unstaked-claim-path))
+- [ ] Transaction signed and executed via wallet client — not just constructed ([§Transaction Lifecycle Model](#transaction-lifecycle-model))
+
+---
+
 ## Source of Truth
 
 Reference: https://docs.fullsail.finance
