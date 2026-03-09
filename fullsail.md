@@ -1438,7 +1438,50 @@ const totalMinutesUTC = hourUTC * 60 + minuteUTC
 
 ## Vaults
 
-<!-- Phase 5 -->
+This section covers Full Sail's automated vault system — delegated liquidity management that deposits assets into a vault-managed position, auto-compounds fees and rewards, and adjusts ranges without manual intervention.
+
+### Vault Purpose
+
+Full Sail vaults provide automated yield strategies on top of concentrated liquidity positions. A vault accepts deposit of one or both pool tokens, issues vault shares to the depositor, and manages the underlying position autonomously — rebalancing tick ranges, compounding accrued fees and rewards back into the position, and optimizing capital efficiency without requiring the depositor to monitor or adjust the position manually.
+
+| Property | Value |
+|----------|-------|
+| What vaults manage | Full Sail concentrated liquidity positions |
+| Deposit output | Vault shares (redeemable for underlying position value) |
+| Compounding | Automatic — fees and rewards reinvested each epoch |
+| Range management | Automatic — vault adjusts ticks based on price movement |
+| Vault eligibility | Per-pool — only vault-enabled pools support this; check for compass icon in Full Sail app |
+
+Vaults are not available for every pool. A pool must have vault support enabled (marked with a compass icon in the Full Sail app UI). Agents must confirm vault eligibility for a pool before attempting vault deposit — there is no SDK method to check vault eligibility at runtime; use the pool list from the Full Sail app or a known vault-enabled pool ID.
+
+**Vault shares represent a proportional claim on the underlying vault position — their value changes as the vault compounds and rebalances. Do not treat share amounts as stable token balances.**
+
+**Vault-enabled pools are a subset of all Full Sail pools. Verify the pool supports vaults before calling any vault transaction.**
+
+---
+
+### Chain Pool Requirement
+
+All vault `*Transaction` calls require a Chain Pool — a real-time pool object fetched via `Pool.getByIdFromChain(poolId)`. Do not use a Backend Pool (`Pool.getById()`). This is the universal rule established in ## Protocol Fundamentals and applies equally to vault operations.
+
+```typescript
+// WRONG — stale state; use getByIdFromChain for vault transactions
+const backendPool = await fullSailSDK.Pool.getById(poolId)
+// await fullSailSDK.Vault.depositTransaction({ poolId: backendPool.id, ... }) // DO NOT USE
+```
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK.md (fetched 2026-03-10)
+// CORRECT — real-time tick state required for vault transactions
+const chainPool = await fullSailSDK.Pool.getByIdFromChain(poolId)
+// proceed to vault deposit or withdrawal using chainPool.id
+```
+
+**Call `Pool.getByIdFromChain(poolId)` before every vault `*Transaction` call. Backend Pool (`getById`) is for display calculations only — never pass it to vault transactions.**
+
+**This is the same Chain Pool rule that applies to all Full Sail `*Transaction` calls. Vaults are not an exception.**
+
+---
 
 ## Prediction Voting
 
