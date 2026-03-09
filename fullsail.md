@@ -1481,6 +1481,78 @@ const chainPool = await fullSailSDK.Pool.getByIdFromChain(poolId)
 
 **This is the same Chain Pool rule that applies to all Full Sail `*Transaction` calls. Vaults are not an exception.**
 
+### Vault Deposit
+
+Deposits tokens into a vault-managed position and returns vault shares.
+
+> **PRECONDITION:** The pool must have vault support enabled (compass icon). Fetch a Chain Pool before calling: `const chainPool = await fullSailSDK.Pool.getByIdFromChain(poolId)`.
+
+> **NOTE:** Vault deposit SDK method signatures are not published in the current public SDK documentation (`@fullsailfinance/sdk` as of 2026-03-10 lists no `Vault` namespace). The method and parameters below follow the project naming convention (`*Transaction` returns unsigned) but are INFERRED from UI tutorial behavior. **Verify exact method name and parameters at `https://docs.fullsail.finance/developer/SDK.md` before use.**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| poolId | string | Vault-enabled pool ID — use `chainPool.id` from `Pool.getByIdFromChain()` |
+| amountA | bigint | Token A deposit amount in base units |
+| amountB | bigint | Token B deposit amount in base units |
+
+Returns unsigned Transaction — must be signed and submitted separately.
+
+```typescript
+// UNVERIFIED — Vault SDK method signatures are NOT confirmed in public docs as of 2026-03-10
+// Verify exact parameters at https://docs.fullsail.finance/developer/SDK.md before use
+// Pattern follows project convention: *Transaction returns unsigned Transaction
+
+// VAULT-04: Chain Pool required for vault transactions
+const chainPool = await fullSailSDK.Pool.getByIdFromChain(poolId)
+
+const transaction = await fullSailSDK.Vault.depositTransaction({
+  poolId: chainPool.id,
+  amountA: 1000000n,  // token A amount in base units
+  amountB: 1000000n,  // token B amount in base units
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+// Returns vault shares — store for later withdrawal
+```
+
+**`// UNVERIFIED` — The `Vault` namespace is not documented in the public `@fullsailfinance/sdk` as of 2026-03-10. Verify `fullSailSDK.Vault.depositTransaction` exists and confirm parameter names before calling in production.**
+
+**The `poolId` parameter must be `chainPool.id` from `Pool.getByIdFromChain()` — not from `Pool.getById()`. Backend Pool causes positioning errors.**
+
+---
+
+### Vault Withdrawal
+
+Redeems vault shares for the underlying position value at current vault NAV.
+
+> **NOTE:** Vault withdrawal SDK method signatures are not published in the current public SDK documentation (`@fullsailfinance/sdk` as of 2026-03-10 lists no `Vault` namespace). The method and parameters below follow the project naming convention but are INFERRED. **Verify exact method name and parameters at `https://docs.fullsail.finance/developer/SDK.md` before use.**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| poolId | string | Vault-enabled pool ID — use `chainPool.id` from `Pool.getByIdFromChain()` |
+| shares | bigint | Vault share amount to redeem (received from prior deposit) |
+
+Returns unsigned Transaction — must be signed and submitted separately.
+
+```typescript
+// UNVERIFIED — Vault SDK method signatures are NOT confirmed in public docs as of 2026-03-10
+// Verify exact parameters at https://docs.fullsail.finance/developer/SDK.md before use
+
+// VAULT-04: Chain Pool required for vault transactions
+const chainPool = await fullSailSDK.Pool.getByIdFromChain(poolId)
+
+const transaction = await fullSailSDK.Vault.withdrawTransaction({
+  poolId: chainPool.id,
+  shares: shareAmount,  // vault share amount to redeem
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+**`// UNVERIFIED` — The `Vault` namespace is not documented in the public `@fullsailfinance/sdk` as of 2026-03-10. Verify `fullSailSDK.Vault.withdrawTransaction` exists and confirm parameter names before calling in production.**
+
+**Pass the `shares` value received from the deposit receipt — do not derive share amounts independently. Share amounts are minted by the vault at deposit time.**
+
 ---
 
 ## Prediction Voting
