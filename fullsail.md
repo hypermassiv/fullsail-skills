@@ -1108,6 +1108,192 @@ const result = await wallet.signAndExecuteTransaction({ transaction })
 
 ---
 
+### Lock.mergeTransaction()
+
+> **WARNING — IRREVERSIBLE:** Merging resets votes from the affected locks. If either lock has active governance votes, those votes will be lost when this transaction executes. You must recast votes after the merge. This cannot be undone — confirm both locks have no active votes, or accept that votes from both locks will be reset.
+>
+> **Additionally:** If either lock has Auto-Max Lock (permanent) enabled, disable it using `Lock.disablePermanentTransaction()` before merging.
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| fromLockId | string | Lock to merge from — this lock is destroyed after merge |
+| toLockId | string | Lock to merge into — receives all SAIL from fromLock |
+| isFromLockVoted | boolean | true if fromLock has active governance votes |
+| isToLockVoted | boolean | true if toLock has active governance votes |
+
+**`fromLockId` is destroyed after the merge. All SAIL is consolidated into `toLockId`. This is irreversible.**
+
+**Vote reset is scoped to the affected locks only — other locks owned by the same wallet are not affected.**
+
+**Always pass the correct `isFromLockVoted` and `isToLockVoted` values. These signal the SDK to handle vote cleanup for the affected locks.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK.md (fetched 2026-03-09)
+// Returns unsigned Transaction — must be signed and submitted separately
+// WARNING: Votes from affected locks are reset — recast after merge
+// fromLockId is destroyed; toLockId receives all SAIL
+
+const transaction = await fullSailSDK.Lock.mergeTransaction({
+  fromLockId,    // lock to merge from — destroyed after merge
+  toLockId,      // lock to merge into — receives combined SAIL
+  isFromLockVoted: false, // set true if fromLock has active governance votes
+  isToLockVoted: false,   // set true if toLock has active governance votes
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+---
+
+### Lock.splitTransaction()
+
+> **WARNING — IRREVERSIBLE:** Splitting resets votes from the affected lock. If the lock has active governance votes, those votes will be lost when this transaction executes. You must recast votes after the split. This cannot be undone — confirm the lock has no active votes, or accept that its votes will be reset.
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| lockId | string | Lock to split |
+| amount | bigint | SAIL amount to move into the newly created lock (9 decimal places) |
+| isVoted | boolean | true if the lock currently has active governance votes |
+
+**`amount` determines how much SAIL moves into the new lock. The original lock retains the remainder. Both locks persist after the split.**
+
+**Vote reset is scoped to the affected lock only — the original lock's votes are reset; other locks owned by the same wallet are not affected.**
+
+**The newly created lock starts with no votes. Recast votes on both locks after splitting if governance participation is required.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK.md (fetched 2026-03-09)
+// Returns unsigned Transaction — must be signed and submitted separately
+// WARNING: Lock votes are reset — recast after split
+
+const transaction = await fullSailSDK.Lock.splitTransaction({
+  lockId,
+  amount: 500000n, // SAIL amount to split into a new lock (9 decimals)
+  isVoted: false,  // set true if lock has active governance votes
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+---
+
+### Lock.transferTransaction()
+
+Transfers ownership of a lock to another Sui wallet address. After transfer, the recipient controls the lock and the sender has no further access.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| lockId | string | Lock to transfer |
+| receiver | string | Recipient Sui wallet address (0x...) |
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+**After transfer, the original wallet loses all control of the lock. This is irreversible — verify the recipient address before submitting.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK.md (fetched 2026-03-09)
+// Returns unsigned Transaction — must be signed and submitted separately
+
+const transaction = await fullSailSDK.Lock.transferTransaction({
+  lockId,
+  receiver: '0x...', // recipient wallet address — verify before submitting
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+---
+
+### Lock.enablePermanentTransaction() and disablePermanentTransaction()
+
+Toggles the permanent status of a lock. Permanent locks have no expiry and provide maximum voting power proportional to SAIL amount.
+
+**enablePermanentTransaction:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| lockId | string | Lock to make permanent |
+
+**disablePermanentTransaction:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| lockId | string | Permanent lock to convert back to time-limited |
+
+**Both methods return unsigned Transaction — must be signed and submitted separately.**
+
+**Disable permanent status using `disablePermanentTransaction()` before calling `mergeTransaction()` or `splitTransaction()` if the lock has Auto-Max Lock (permanent) enabled.**
+
+**After `disablePermanentTransaction()`, the lock becomes time-limited. Duration behavior after disable is not explicitly documented in SDK — verify from SDK source if precision is needed.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK.md (fetched 2026-03-09)
+// Returns unsigned Transaction — must be signed and submitted separately
+// Permanent = max voting power with no expiry; disable returns to time-weighted lock
+
+// Enable permanent lock
+const enableTx = await fullSailSDK.Lock.enablePermanentTransaction({ lockId })
+const result1 = await wallet.signAndExecuteTransaction({ transaction: enableTx })
+
+// Disable permanent lock (call before mergeTransaction or splitTransaction if lock is permanent)
+const disableTx = await fullSailSDK.Lock.disablePermanentTransaction({ lockId })
+const result2 = await wallet.signAndExecuteTransaction({ transaction: disableTx })
+```
+
+---
+
+### Lock.claimOSailAndCreateLockTransaction()
+
+Combines oSAIL claim from a staked position and veSAIL lock creation in a single atomic transaction. Equivalent to calling `claimOSailTransaction` then `createLockFromOSailTransaction` but in one submission.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| coinTypeA | string | Pool token A coin type — from Backend Pool `token_a.address` |
+| coinTypeB | string | Pool token B coin type — from Backend Pool `token_b.address` |
+| poolId | string | Pool ID |
+| gaugeId | string | Gauge ID — from Backend Pool `gauge_id` |
+| positionStakeId | string | Stake ID — from `position.stake_info.id`; position must be staked |
+| oSailCoinType | string | Current epoch oSAIL coin type — from `getCurrentEpochOSail().address` |
+| durationDays | number | Lock duration in days — ignored if isPermanent is true |
+| isPermanent | boolean | true = permanent lock (no expiry, max voting power) |
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+**Precondition: position must be staked (`position.stake_info` exists). `positionStakeId` is `position.stake_info.id` — verify stake status before calling.**
+
+**`oSailCoinType` must come from `await fullSailSDK.Coin.getCurrentEpochOSail()` called fresh before this transaction. Never cache.**
+
+**This method requires both a Backend Pool fetch (for coinTypeA, coinTypeB, gaugeId) and a Position fetch (for positionStakeId). Perform both before calling.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK.md (fetched 2026-03-09)
+// Returns unsigned Transaction — must be signed and submitted separately
+// Call getCurrentEpochOSail() fresh — never use a cached value
+
+const pool = await fullSailSDK.Pool.getById(poolId)
+const position = await fullSailSDK.Position.getById(positionId)
+const currentEpochOSail = await fullSailSDK.Coin.getCurrentEpochOSail()
+
+const transaction = await fullSailSDK.Lock.claimOSailAndCreateLockTransaction({
+  coinTypeA: pool.token_a.address,
+  coinTypeB: pool.token_b.address,
+  poolId,
+  gaugeId: pool.gauge_id,
+  positionStakeId: position.stake_info.id, // position must be staked
+  oSailCoinType: currentEpochOSail.address, // fresh call required — not cached
+  durationDays: 365 * 4,
+  isPermanent: false,
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+---
+
 ## Governance Voting
 
 <!-- Phase 4 -->
