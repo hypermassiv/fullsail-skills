@@ -24,7 +24,26 @@ last-validated: 2026-03-08
 
 ## Fast Routing
 
-<!-- Phase 6: Written last after all domain sections exist. Maps common agent tasks to section anchors. -->
+Use this table to jump directly to the relevant section for your current task.
+
+| Task | Go to |
+|------|-------|
+| Install and initialize the SDK | [§Protocol Fundamentals > SDK Installation and Initialization](#sdk-installation-and-initialization) |
+| Set up sender address after wallet connect | [§Protocol Fundamentals > Two-Phase Sender Setup](#two-phase-sender-setup) |
+| Understand the transaction lifecycle (unsigned return) | [§Protocol Fundamentals > Transaction Lifecycle Model](#transaction-lifecycle-model) |
+| Choose between Chain Pool and Backend Pool | [§Protocol Fundamentals > Pool Data Sources](#pool-data-sources-chain-pool-vs-backend-pool) |
+| Execute a token swap (router path) | [§Swaps > Swap.swapRouterTransaction()](#swapswaproutertransaction) |
+| Execute a direct pool swap | [§Swaps > Direct Pool Swap: Complete 4-Step Sequence](#direct-pool-swap-complete-4-step-sequence) |
+| Open a liquidity position | [§Liquidity Positions > Position.openTransaction()](#positionopentransaction) |
+| Add liquidity to an existing position | [§Liquidity Positions > Position.addLiquidityTransaction()](#positionaddliquiditytransaction) |
+| Remove liquidity (staked or unstaked) | [§Liquidity Positions > Position.removeLiquidityTransaction()](#positionremoveliquiditytransaction) |
+| Claim all rewards from a staked position | [§Rewards and oSAIL > Staked Position: claimOSailAndStakedPoolRewardsTransaction()](#staked-position-claimosailandstakedpoolrewardstransaction) |
+| Check oSAIL expiry and redeem | [§Rewards and oSAIL > oSAIL Expiry Check](#osail-expiry-check) |
+| Create a veSAIL lock | [§Locks and veSAIL > Lock.createLockTransaction()](#lockcreatelocktransaction) |
+| Vote on governance pools | [§Governance Voting > Lock.batchVoteTransaction()](#lockbatchvotetransaction) |
+| Deposit into a vault | [§Vaults > Vault Deposit](#vault-deposit) |
+| Submit a prediction vote | [§Prediction Voting > Creating and Submitting a Prediction Vote](#creating-and-submitting-a-prediction-vote) |
+| Debug a transaction failure | [§Pitfalls](#pitfalls) |
 
 ## Protocol Fundamentals
 
