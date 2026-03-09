@@ -1363,6 +1363,79 @@ const result = await wallet.signAndExecuteTransaction({ transaction })
 
 ---
 
+### Batch Vote Weight Mechanics
+
+The `weight` field in each `votes` array member is an abstract ratio unit. The SDK sums all weight values across the votes array and uses each individual value as a fraction of that sum. This means any combination of values produces a valid allocation — there is no requirement to sum to exactly 100.
+
+| weights array | Total sum | Pool A share | Pool B share |
+|---------------|-----------|--------------|--------------|
+| [70n, 30n] | 100 | 70% | 30% |
+| [7n, 3n] | 10 | 70% | 30% |
+| [1n, 1n] | 2 | 50% | 50% |
+| [20n, 80n] | 100 | 20% | 80% |
+| [1n, 3n] | 4 | 25% | 75% |
+
+The first two rows produce identical allocations despite different values. The SDK normalizes any values to 100%.
+
+**Do NOT validate that weights sum to exactly 100 before calling `batchVoteTransaction`. The SDK accepts any values and normalizes them. A sum-to-100 check will incorrectly reject valid inputs like `[1n, 1n]` (50%/50%) or `[7n, 3n]` (70%/30%).**
+
+**Use weight values that make the intended split visually unambiguous. Prefer `[70n, 30n]` over `[7n, 3n]` for a 70%/30% split — both are correct, but the former is clearer when reading the code.**
+
+---
+
+### Vote Reset Behavior
+
+When `Lock.mergeTransaction()` or `Lock.splitTransaction()` executes, the governance votes associated with the affected lock(s) are reset. Other locks owned by the same wallet are not affected — their vote allocations remain active for the current epoch.
+
+| Operation | Locks affected | Votes reset | Unaffected |
+|-----------|---------------|-------------|------------|
+| mergeTransaction | fromLockId and toLockId | Votes from both affected locks | All other wallet locks |
+| splitTransaction | lockId (original) | Votes from the split lock | New lock (starts with no votes), all other wallet locks |
+
+**After `mergeTransaction`, recast votes from the surviving lock (`toLockId`) to resume governance participation for the epoch.**
+
+**After `splitTransaction`, recast votes on both the original lock and the newly created lock to resume governance participation. The new lock starts with no votes.**
+
+**The `isFromLockVoted`, `isToLockVoted` (merge) and `isVoted` (split) parameters signal the SDK to handle vote cleanup for the affected lock. Always pass these accurately — check whether each lock has active governance votes before calling.**
+
+**Vote reset is not global — only the affected lock(s)' votes are cleared. An agent managing multiple locks does not need to recast votes for locks that were not part of the merge or split.**
+
+See `### Lock.mergeTransaction()` and `### Lock.splitTransaction()` in ## Locks and veSAIL for the BLOCKING WARNINGs that appear before those method signatures.
+
+---
+
+### Reading Epoch State
+
+No SDK method is documented for querying current epoch state or confirming whether the voting window is currently open. The only epoch-related SDK method is `fullSailSDK.Coin.getCurrentEpochOSail()`, which returns the current epoch's oSAIL coin type address — not epoch metadata, not epoch number, not window open/close timestamps.
+
+To determine voting window status, use protocol timing rules:
+
+```
+Epoch boundary:      00:00 UTC every Thursday
+Voting window open:  01:00 UTC Thursday
+Voting window close: 23:00 UTC the following Wednesday
+```
+
+```typescript
+// Source: https://docs.fullsail.finance/tutorials/prediction-voting.md (fetched 2026-03-09)
+// No SDK method exists for epoch state — use protocol timing rules
+// No getCurrentEpoch() method is documented in the SDK — do not call it
+
+const now = new Date()
+const dayOfWeek = now.getUTCDay()         // 0=Sun, 1=Mon, ..., 4=Thu, 3=Wed
+const hourUTC = now.getUTCHours()
+const minuteUTC = now.getUTCMinutes()
+const totalMinutesUTC = hourUTC * 60 + minuteUTC
+// Voting is OPEN if: day is Thu (4) and time >= 01:00, OR day is Fri/Sat/Sun/Mon/Tue/Wed and time < 23:00
+// This is protocol-derived timing — no SDK call available to confirm current window status.
+```
+
+**Do NOT call `fullSailSDK.Lock.getCurrentEpoch()`, `fullSailSDK.Gauge.getEpoch()`, or any similar method — no such method is documented in the SDK. Attempting to call it will throw a runtime error.**
+
+**`fullSailSDK.Coin.getCurrentEpochOSail()` returns the oSAIL coin type for the current epoch — use this for oSAIL lock creation and claim operations, not for determining epoch timing.**
+
+---
+
 ## Vaults
 
 <!-- Phase 5 -->
