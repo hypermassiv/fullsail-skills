@@ -1934,6 +1934,47 @@ Before executing any Full Sail transaction, verify:
 
 ## Source of Truth
 
-Reference: https://docs.fullsail.finance
+### Documentation
 
-<!-- Phase 6: Complete with contract addresses, SDK npm link, and all canonical URLs. -->
+| Resource | URL |
+|----------|-----|
+| Full Sail Docs | https://docs.fullsail.finance |
+| SDK Reference | https://docs.fullsail.finance/developer/SDK.md |
+| Contract Addresses | https://docs.fullsail.finance/developer/contracts.md |
+| Token Contracts | https://docs.fullsail.finance/developer/token-contracts.md |
+| Full Sail App | https://app.fullsail.finance/ |
+| SDK npm | https://www.npmjs.com/package/@fullsailfinance/sdk |
+
+### Contract Addresses (Mainnet)
+
+Fetched from https://docs.fullsail.finance/developer/contracts.md (2026-03-10). Verify against live docs before production use.
+
+**Packages:**
+
+| Package | Address |
+|---------|---------|
+| Integrate Package | `0x3d5f22b95e48ba187397e1f573c6931fac5bbb0023e9a753da36da6c93c8f151` |
+| clmm_pool | `0xf7ca99f9fd82da76083a52ab56d88aff15d039b76499b85db8b8bc4d4804584a` |
+| voting_escrow | `0xfc410c145e4a9ba8f4aa3cb266bf3e467c35ea39dc90788e9a34f85338b734b7` |
+| governance | `0x1cde2f0d4a50700960a8062f4ed7b19258f2a8c5eb4dc798fbda5e8b8d8c0658` |
+
+**Global Objects:**
+
+| Object | Address |
+|--------|---------|
+| GlobalConfig | `0xe93baa80cb570b3a494cbf0621b2ba96bc993926d34dc92508c9446f9a05d615` |
+| RewarderGlobalVault | `0xfb971d3a2fb98bde74e1c30ba15a3d8bef60a02789e59ae0b91660aeed3e64e1` |
+| Pools | `0x0efb954710df6648d090bdfa4a5e274843212d6eb3efe157ee465300086e3650` |
+| VotingEscrow | `0xe36c353bf09559253306fcec8ccdd6414ef01c20684f1d31f00ed25034718189` |
+| Voter | `0x266ff531d300f00ed725e801ba2898d926cad17b9406ea2150e1085de255898f` |
+| Minter | `0x58f1b1c1c3b996ffc6e100131cddd0c9999d10a2744db37b5d2422ae52db97f4` |
+
+### Token Contracts (Mainnet)
+
+Fetched from https://docs.fullsail.finance/developer/token-contracts.md (2026-03-10).
+
+| Token | Coin Type |
+|-------|-----------|
+| SAIL | `0x1d4a2bdbc1602a0adaa98194942c220202dcc56bb0a205838dfaa63db0d5497e::SAIL::SAIL` |
+| veSAIL | `0xe616397e503278d406e184d2258bcbe7a263d0192cc0848de2b54b518165f832::voting_escrow::Lock` |
+| oSAIL | epoch-dynamic — retrieve at runtime via `Coin.getCurrentEpochOSail()`. Do not hardcode. |
