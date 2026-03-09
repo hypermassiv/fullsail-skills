@@ -646,7 +646,150 @@ const tickUpper = TickMath.getNextInitializableTickIndex(
 
 ## Rewards and oSAIL
 
-<!-- Phase 3 -->
+This section covers reward claim patterns split by stake state. Before selecting a claim method, determine whether a position is staked or unstaked using the detection pattern in ## Liquidity Positions.
+
+### Reward Claim Matrix
+
+| Reward Type | When Triggered | Auto-claimed? | Explicit Call (unstaked) | Explicit Call (staked) |
+|-------------|----------------|---------------|--------------------------|------------------------|
+| oSAIL emissions | Liquidity add, remove, close | YES — during liquidity ops | — | `claimOSailTransaction` (standalone) |
+| Trading fees | Continuous | NO | `claimFeeTransaction` | Not applicable (unstake required) |
+| Pool staking rewards | Continuous | NO | `claimUnstakedPoolRewardsTransaction` | `claimStakedPoolRewardsTransaction` |
+| All (combined) | On close | YES via `closeTransaction` | `claimFeeAndUnstakedPoolRewardsTransaction` | `claimOSailAndStakedPoolRewardsTransaction` |
+
+**oSAIL is the only reward type auto-claimed during liquidity operations. Trading fees and pool staking rewards always require an explicit claim call.**
+
+**Staked and unstaked positions use different claim method sets — never mix them. Check `position.stake_info` before selecting a method.**
+
+---
+
+### Staked vs Unstaked Claim Path
+
+```
+1. Fetch position: await fullSailSDK.Position.getById(positionId)
+2. Check stake status: const isStaked = !!position.stake_info
+3. If NOT staked → use unstaked methods:
+   - Fees only:            claimFeeTransaction
+   - Pool rewards only:    claimUnstakedPoolRewardsTransaction
+   - Fees + pool rewards:  claimFeeAndUnstakedPoolRewardsTransaction
+4. If STAKED → use staked methods (requires positionStakeId, gaugeId, oSailCoinType):
+   - oSAIL only:                          claimOSailTransaction
+   - Pool rewards only:                   claimStakedPoolRewardsTransaction
+   - oSAIL + pool rewards:                claimOSailAndStakedPoolRewardsTransaction
+```
+
+**`getCurrentEpochOSail()` must be called fresh before every staked claim operation. Never reuse a cached oSailCoinType value across sessions or epoch boundaries.**
+
+---
+
+### Unstaked Position: claimFeeTransaction()
+
+Claims accrued trading fees for an unstaked position.
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `coinTypeA` | `string` | Pool's coinTypeA — from Backend Pool `pool.token_a.address` |
+| `coinTypeB` | `string` | Pool's coinTypeB — from Backend Pool `pool.token_b.address` |
+| `poolId` | `string` | Pool object ID |
+| `positionId` | `string` | Position object ID |
+
+**Precondition: position must be unstaked (`position.stake_info` is undefined). Calling this on a staked position will fail.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK
+// Returns unsigned Transaction — must be signed and submitted separately
+
+const pool = await fullSailSDK.Pool.getById(poolId)
+
+const transaction = await fullSailSDK.Position.claimFeeTransaction({
+  coinTypeA: pool.token_a.address,
+  coinTypeB: pool.token_b.address,
+  poolId,
+  positionId,
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+---
+
+### Unstaked Position: claimUnstakedPoolRewardsTransaction()
+
+Claims accrued pool staking rewards for an unstaked position.
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `coinTypeA` | `string` | Pool's coinTypeA — from Backend Pool `pool.token_a.address` |
+| `coinTypeB` | `string` | Pool's coinTypeB — from Backend Pool `pool.token_b.address` |
+| `poolId` | `string` | Pool object ID |
+| `positionId` | `string` | Position object ID |
+| `rewardCoinTypes` | `string[]` | Array of all reward coin type addresses for this pool |
+
+**`rewardCoinTypes` must include all reward coin type addresses for this pool. Derive from the pool object's reward token list — verify the field name from `Pool.getById()` return shape.**
+
+**Precondition: position must be unstaked.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK
+// Returns unsigned Transaction — must be signed and submitted separately
+
+const pool = await fullSailSDK.Pool.getById(poolId)
+// rewardCoinTypes: derive from pool object reward token list — verify field name from Pool.getById() return shape
+const rewardCoinTypes = pool.reward_tokens?.map((t: any) => t.address) ?? []
+
+const transaction = await fullSailSDK.Position.claimUnstakedPoolRewardsTransaction({
+  coinTypeA: pool.token_a.address,
+  coinTypeB: pool.token_b.address,
+  poolId,
+  positionId,
+  rewardCoinTypes,
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+---
+
+### Unstaked Position: claimFeeAndUnstakedPoolRewardsTransaction()
+
+Combined call — claims both trading fees and pool rewards in a single transaction. Prefer this over two separate calls.
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `coinTypeA` | `string` | Pool's coinTypeA — from Backend Pool `pool.token_a.address` |
+| `coinTypeB` | `string` | Pool's coinTypeB — from Backend Pool `pool.token_b.address` |
+| `poolId` | `string` | Pool object ID |
+| `positionId` | `string` | Position object ID |
+| `rewardCoinTypes` | `string[]` | Array of all reward coin type addresses for this pool |
+
+**Precondition: position must be unstaked. This combined method replaces both `claimFeeTransaction` and `claimUnstakedPoolRewardsTransaction` — do not call all three.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK
+// Returns unsigned Transaction — must be signed and submitted separately
+
+const pool = await fullSailSDK.Pool.getById(poolId)
+// rewardCoinTypes: derive from pool object reward token list — verify field name from Pool.getById() return shape
+const rewardCoinTypes = pool.reward_tokens?.map((t: any) => t.address) ?? []
+
+const transaction = await fullSailSDK.Position.claimFeeAndUnstakedPoolRewardsTransaction({
+  coinTypeA: pool.token_a.address,
+  coinTypeB: pool.token_b.address,
+  poolId,
+  positionId,
+  rewardCoinTypes,
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+---
 
 ## Locks and veSAIL
 
