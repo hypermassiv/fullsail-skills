@@ -791,6 +791,193 @@ const result = await wallet.signAndExecuteTransaction({ transaction })
 
 ---
 
+### Staked Position: claimOSailTransaction()
+
+Claims accrued oSAIL emissions for a staked position.
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `coinTypeA` | `string` | Pool's coinTypeA — from Backend Pool `pool.token_a.address` |
+| `coinTypeB` | `string` | Pool's coinTypeB — from Backend Pool `pool.token_b.address` |
+| `poolId` | `string` | Pool object ID |
+| `positionStakeId` | `string` | Stake object ID — `position.stake_info.id` |
+| `oSailCoinType` | `string` | Current epoch oSAIL coin type — `currentEpochOSail.address` from `fullSailSDK.Coin.getCurrentEpochOSail()` |
+| `gaugeId` | `string` | From Backend Pool — `pool.gauge_id` |
+
+**Precondition: position must be staked (`position.stake_info` exists). `positionStakeId` is `position.stake_info.id` — never hardcode.**
+
+**`oSailCoinType` is `currentEpochOSail.address` from `fullSailSDK.Coin.getCurrentEpochOSail()`. Call this fresh — do not cache.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK
+// Returns unsigned Transaction — must be signed and submitted separately
+
+const pool = await fullSailSDK.Pool.getById(poolId)
+const position = await fullSailSDK.Position.getById(positionId)
+// Call getCurrentEpochOSail() fresh — never use a cached value
+const currentEpochOSail = await fullSailSDK.Coin.getCurrentEpochOSail()
+
+const transaction = await fullSailSDK.Position.claimOSailTransaction({
+  coinTypeA: pool.token_a.address,
+  coinTypeB: pool.token_b.address,
+  poolId,
+  positionStakeId: position.stake_info.id, // never hardcode — always from position.stake_info.id
+  oSailCoinType: currentEpochOSail.address, // fresh call required — not cached
+  gaugeId: pool.gauge_id,
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+---
+
+### Staked Position: claimStakedPoolRewardsTransaction()
+
+Claims accrued pool staking rewards for a staked position.
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `coinTypeA` | `string` | Pool's coinTypeA — from Backend Pool `pool.token_a.address` |
+| `coinTypeB` | `string` | Pool's coinTypeB — from Backend Pool `pool.token_b.address` |
+| `poolId` | `string` | Pool object ID |
+| `positionStakeId` | `string` | Stake object ID — `position.stake_info.id` |
+| `gaugeId` | `string` | From Backend Pool — `pool.gauge_id` |
+| `rewardCoinTypes` | `string[]` | Array of all reward coin type addresses for this pool |
+
+**Precondition: position must be staked.**
+
+**`rewardCoinTypes` must be exhaustive — see note in claimUnstakedPoolRewardsTransaction for derivation.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK
+// Returns unsigned Transaction — must be signed and submitted separately
+
+const pool = await fullSailSDK.Pool.getById(poolId)
+const position = await fullSailSDK.Position.getById(positionId)
+// rewardCoinTypes: derive from pool object reward token list — verify field name from Pool.getById() return shape
+const rewardCoinTypes = pool.reward_tokens?.map((t: any) => t.address) ?? []
+
+const transaction = await fullSailSDK.Position.claimStakedPoolRewardsTransaction({
+  coinTypeA: pool.token_a.address,
+  coinTypeB: pool.token_b.address,
+  poolId,
+  positionStakeId: position.stake_info.id,
+  gaugeId: pool.gauge_id,
+  rewardCoinTypes,
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+---
+
+### Staked Position: claimOSailAndStakedPoolRewardsTransaction()
+
+Combined call — claims both oSAIL and pool rewards in a single transaction for staked positions. Prefer this over two separate calls.
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `coinTypeA` | `string` | Pool's coinTypeA — from Backend Pool `pool.token_a.address` |
+| `coinTypeB` | `string` | Pool's coinTypeB — from Backend Pool `pool.token_b.address` |
+| `poolId` | `string` | Pool object ID |
+| `positionStakeId` | `string` | Stake object ID — `position.stake_info.id` |
+| `gaugeId` | `string` | From Backend Pool — `pool.gauge_id` |
+| `oSailCoinType` | `string` | Current epoch oSAIL coin type — `currentEpochOSail.address` from `fullSailSDK.Coin.getCurrentEpochOSail()` |
+| `rewardCoinTypes` | `string[]` | Array of all reward coin type addresses for this pool |
+
+**Precondition: position must be staked. This combined method replaces both `claimOSailTransaction` and `claimStakedPoolRewardsTransaction` — do not call all three.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK
+// Returns unsigned Transaction — must be signed and submitted separately
+
+const pool = await fullSailSDK.Pool.getById(poolId)
+const position = await fullSailSDK.Position.getById(positionId)
+// Call getCurrentEpochOSail() fresh — never use a cached value
+const currentEpochOSail = await fullSailSDK.Coin.getCurrentEpochOSail()
+// rewardCoinTypes: derive from pool object reward token list — verify field name from Pool.getById() return shape
+const rewardCoinTypes = pool.reward_tokens?.map((t: any) => t.address) ?? []
+
+const transaction = await fullSailSDK.Position.claimOSailAndStakedPoolRewardsTransaction({
+  coinTypeA: pool.token_a.address,
+  coinTypeB: pool.token_b.address,
+  poolId,
+  positionStakeId: position.stake_info.id,
+  gaugeId: pool.gauge_id,
+  oSailCoinType: currentEpochOSail.address, // fresh call required — not cached
+  rewardCoinTypes,
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+---
+
+### oSAIL Expiry Check
+
+oSAIL expires 5 weeks after the epoch start in which it was issued. Each epoch has its own oSAIL coin type with a unique address. `getCurrentEpochOSail()` returns the CURRENT epoch's oSAIL — using a prior epoch's coin type will fail or produce no result.
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK
+// Call fresh before every oSAIL operation — never cache across sessions.
+const currentEpochOSail = await fullSailSDK.Coin.getCurrentEpochOSail()
+// currentEpochOSail.address — current epoch oSAIL coin type address
+// Expiry field name on returned object: verify from SDK source
+```
+
+**Call `getCurrentEpochOSail()` fresh before every oSAIL operation. A cached value from a previous session or epoch will be wrong.**
+
+**If a position holds oSAIL from a prior epoch, the current epoch's oSAIL coin type will differ — the prior epoch oSAIL is expired and cannot be claimed via the current epoch type.**
+
+**The oSAIL Expiry Rule is also documented in ## Protocol Fundamentals — see that section for the 5-week expiry window rule.**
+
+---
+
+### oSAIL Redemption Options
+
+**Option A: Lock as veSAIL (available even after oSAIL has expired)**
+
+- Use `Lock.createLockFromOSailTransaction()` for standalone oSAIL-to-veSAIL conversion
+- Use `Lock.claimOSailAndCreateLockTransaction()` to claim oSAIL from a position and lock it in one transaction
+- Full lock parameters documented in ## Locks and veSAIL (Phase 4)
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK
+// Lock oSAIL as veSAIL — even expired oSAIL can be locked
+const lockTx = await fullSailSDK.Lock.createLockFromOSailTransaction({
+  // exact params — see ## Locks and veSAIL for full signature
+})
+```
+
+**Option B: Redeem for SAIL + USDC (50% of SAIL spot price at redemption, paid in USDC)**
+
+- No SDK method confirmed for this path — may be protocol UI only
+- Verify from SDK docs before attempting programmatic redemption. If no SDK method exists, use the Full Sail app UI.
+
+**The lock path (Option A) has confirmed SDK methods. The SAIL+USDC redemption path (Option B) has no confirmed SDK method — verify before implementing.**
+
+---
+
+### Epoch Cycle
+
+Full Sail uses a 7-day voting epoch cycle. Each epoch starts a new oSAIL emission token with a unique coin type. oSAIL expires 5 weeks after the epoch start in which it was issued. Voting windows open at epoch start; governance votes affect gauge weight allocations that determine pool reward distribution.
+
+| Property | Value |
+|----------|-------|
+| Epoch duration | 7 days |
+| oSAIL expiry window | 5 weeks after issuing epoch start |
+| Impact on claims | `claimOSailTransaction` must use current epoch's `oSailCoinType` |
+
+**Epoch timing affects oSAIL expiry calculations. If operating near an epoch boundary, oSAIL may expire between when it was earned and when the claim transaction is submitted.**
+
+---
+
 ## Locks and veSAIL
 
 <!-- Phase 4 -->
