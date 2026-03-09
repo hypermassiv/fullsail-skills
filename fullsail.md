@@ -1296,7 +1296,72 @@ const result = await wallet.signAndExecuteTransaction({ transaction })
 
 ## Governance Voting
 
-<!-- Phase 4 -->
+Governance voting allocates veSAIL voting power across liquidity pools via the `Lock` namespace. Vote weight determines each pool's share of protocol trading fees for the epoch. All voting is done through `Lock.batchVoteTransaction()` — there is no separate Governance namespace.
+
+### Epoch Cycle
+
+| Property | Value |
+|----------|-------|
+| Epoch duration | 7 days |
+| Epoch boundary | 00:00 UTC every Thursday (epoch starts and ends) |
+| Voting window opens | 01:00 UTC Thursday (1 hour after epoch start) |
+| Voting window closes | 23:00 UTC the following Wednesday (1 hour before epoch end) |
+| Effect of no vote | No fee share for that epoch — lock earns no governance rewards |
+
+Votes cast during the voting window allocate veSAIL voting power across liquidity pools. The pool weight determines what share of protocol trading fees that pool's liquidity providers receive for the epoch. Votes reset at the start of each new epoch — recast votes each epoch to maintain fee share participation.
+
+**If no vote is cast in an epoch, the lock earns no governance fee share for that epoch. There is no carry-forward from prior epochs.**
+
+**Votes can be adjusted at any point during the voting window by calling `Lock.batchVoteTransaction()` again. A new call replaces the prior vote allocation from the specified locks (MEDIUM confidence — functionally implied by "adjust votes" language; verify from SDK source if exact replace-vs-accumulate behavior is critical).**
+
+---
+
+### Lock.batchVoteTransaction()
+
+Allocates veSAIL voting power from one or more locks across liquidity pools. Voting determines fee distribution for the epoch.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| lockIds | string[] | All lock IDs contributing voting power in this batch |
+| votes | Array<{ poolId: string, weight: bigint, volume: bigint }> | Vote allocations per pool |
+
+**votes array members:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| poolId | string | Pool to allocate voting weight to |
+| weight | bigint | Abstract ratio units — any values; SDK normalizes total to 100% |
+| volume | bigint | Predicted pool volume for next epoch, in USD with 6 decimal places (e.g., `5000000000n` = $5000.00) |
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+**`weight` values are abstract ratio units — NOT percentages required to sum to 100. The SDK normalizes any values to 100%. Pass values that make the intended split clear (e.g., `70n` and `30n` for a 70%/30% allocation).**
+
+**`batchVoteTransaction` lives on the `Lock` namespace — `fullSailSDK.Lock.batchVoteTransaction()`. There is no separate Governance namespace.**
+
+**Votes must be cast during the voting window (01:00 UTC Thursday to 23:00 UTC Wednesday). Votes submitted outside the window may fail or be ignored.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK.md (fetched 2026-03-09)
+// Returns unsigned Transaction — must be signed and submitted separately
+// weight: abstract units — any values normalize to 100%
+//   [70n, 30n] = 70%/30% split
+//   [1n, 1n]   = 50%/50% split (equal weight)
+//   [20n, 80n] = 20%/80% split
+// volume: predicted pool volume for next epoch, in USD with 6 decimal places (1000000n = $1.00)
+
+const transaction = await fullSailSDK.Lock.batchVoteTransaction({
+  lockIds: [lockId1, lockId2], // all locks contributing voting power
+  votes: [
+    { poolId: poolId1, weight: 70n, volume: 5000000000n }, // 70% weight, $5000 predicted volume
+    { poolId: poolId2, weight: 30n, volume: 2000000000n }, // 30% weight, $2000 predicted volume
+  ],
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+---
 
 ## Vaults
 
