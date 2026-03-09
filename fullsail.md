@@ -487,6 +487,163 @@ const transaction = await fullSailSDK.Position.stakeTransaction({
 
 ---
 
+### Position.removeLiquidityTransaction()
+
+> **PRECONDITION (Staked Positions):** For staked positions, supply `positionStakeId`, `gaugeId`, and `oSailCoinType` directly to `removeLiquidityTransaction`. No separate unstake call is required or documented in the SDK. Omitting these params on a staked position will fail.
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `coinTypeA` | `string` | Pool's coinTypeA — from Chain Pool |
+| `coinTypeB` | `string` | Pool's coinTypeB — from Chain Pool |
+| `poolId` | `string` | Pool object ID |
+| `positionId` | `string` | Position object ID |
+| `tickLower` | `number` | `position.tick_lower` |
+| `tickUpper` | `number` | `position.tick_upper` |
+| `currentSqrtPrice` | `number` | From Chain Pool — must be real-time |
+| `liquidity` | `bigint` | Liquidity units to remove — derive from position object |
+| `slippage` | `Percentage` | Slippage tolerance |
+| `gaugeId` | `string` | (staked only) From Backend Pool (`Pool.getById()`) |
+| `oSailCoinType` | `string` | (staked only) From `Coin.getCurrentEpochOSail().address` |
+| `positionStakeId` | `string` | (staked only) From `position.stake_info.id` |
+
+**Only oSAIL is auto-claimed during this transaction. Trading fees and pool rewards require separate claim calls.**
+
+**`liquidity` is the number of liquidity units to remove — derive from the position object, not from token amounts.**
+
+```typescript
+// WRONG — no separate unstakeTransaction exists in the SDK
+const unstakeTx = await fullSailSDK.Position.unstakeTransaction({ positionId }) // ERROR: method does not exist
+const removeTx = await fullSailSDK.Position.removeLiquidityTransaction({ positionId, liquidity, ... })
+```
+
+```typescript
+// CORRECT — pass staked params directly to removeLiquidityTransaction
+const removeTx = await fullSailSDK.Position.removeLiquidityTransaction({
+  ...,
+  positionStakeId: position.stake_info.id, // handles staked case; no separate unstake call
+})
+```
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK
+// Returns unsigned Transaction — must be signed and submitted separately
+// NOTE: Only oSAIL auto-claimed in this transaction. Fees and pool rewards are not.
+
+const chainPool = await fullSailSDK.Pool.getByIdFromChain(poolId)
+const pool = await fullSailSDK.Pool.getById(poolId)               // needed for gauge_id (staked only)
+const currentEpochOSail = await fullSailSDK.Coin.getCurrentEpochOSail()
+
+const transaction = await fullSailSDK.Position.removeLiquidityTransaction({
+  coinTypeA: chainPool.coinTypeA,
+  coinTypeB: chainPool.coinTypeB,
+  poolId,
+  positionId,
+  tickLower: position.tick_lower,
+  tickUpper: position.tick_upper,
+  currentSqrtPrice: chainPool.currentSqrtPrice,
+  liquidity, // derive from position object — not from token amounts
+  slippage,
+  // Required only if position is staked — no separate unstake call needed:
+  gaugeId: pool.gauge_id,
+  oSailCoinType: currentEpochOSail.address,
+  positionStakeId: position.stake_info?.id,
+})
+```
+
+---
+
+### Position.closeTransaction()
+
+Closes the position, removes all liquidity, and claims all rewards (oSAIL, fees, and pool rewards) in a single atomic transaction.
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `coinTypeA` | `string` | Pool's coinTypeA — from Chain Pool |
+| `coinTypeB` | `string` | Pool's coinTypeB — from Chain Pool |
+| `poolId` | `string` | Pool object ID |
+| `positionId` | `string` | Position object ID |
+| `tickLower` | `number` | `position.tick_lower` |
+| `tickUpper` | `number` | `position.tick_upper` |
+| `currentSqrtPrice` | `number` | From Chain Pool — must be real-time |
+| `liquidity` | `bigint` | `position.liquidity` — full position liquidity |
+| `slippage` | `Percentage` | Slippage tolerance |
+| `rewardCoinTypes` | `string[]` | Complete list of all reward coin type addresses for this pool — must be exhaustive |
+| `gaugeId` | `string` | (staked only) From Backend Pool (`Pool.getById()`) |
+| `oSailCoinType` | `string` | (staked only) From `Coin.getCurrentEpochOSail().address` |
+| `positionStakeId` | `string` | (staked only) From `position.stake_info.id` |
+
+**`rewardCoinTypes` must be the complete list of all reward coin type addresses for this pool. An incomplete array causes partial reward loss — rewards not listed are not claimed.**
+
+**All rewards (oSAIL, fees, pool rewards) are claimed atomically within `closeTransaction`. No separate claim calls are needed after close.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK
+// Returns unsigned Transaction — must be signed and submitted separately
+// All rewards claimed atomically — no follow-up claim calls needed
+
+const chainPool = await fullSailSDK.Pool.getByIdFromChain(poolId)
+const pool = await fullSailSDK.Pool.getById(poolId)               // needed for gauge_id (staked only)
+const currentEpochOSail = await fullSailSDK.Coin.getCurrentEpochOSail()
+
+const transaction = await fullSailSDK.Position.closeTransaction({
+  coinTypeA: chainPool.coinTypeA,
+  coinTypeB: chainPool.coinTypeB,
+  poolId,
+  positionId,
+  tickLower: position.tick_lower,
+  tickUpper: position.tick_upper,
+  currentSqrtPrice: chainPool.currentSqrtPrice,
+  liquidity: position.liquidity,
+  slippage,
+  rewardCoinTypes: [/* all reward coin type addresses — must be exhaustive; partial = partial claim */],
+  // Required only if position is staked:
+  gaugeId: pool.gauge_id,
+  oSailCoinType: currentEpochOSail.address,
+  positionStakeId: position.stake_info?.id,
+})
+```
+
+---
+
+### Ticks and Price Range
+
+Concentrated liquidity positions are defined by a price range expressed as tick indices (`tick_lower`, `tick_upper`). Ticks must be exact multiples of the pool's `tickSpacing`. Use `TickMath` helpers to compute valid tick boundaries from the current pool state — never hardcode tick values.
+
+| Field | Source | Description |
+|-------|--------|-------------|
+| `tick_lower` | `position.tick_lower` | Lower boundary tick index |
+| `tick_upper` | `position.tick_upper` | Upper boundary tick index |
+| `tickSpacing` | `chainPool.tickSpacing` | Pool's minimum tick step — from Chain Pool |
+| `currentTickIndex` | `chainPool.currentTickIndex` | Pool's current active tick — from Chain Pool |
+
+**Never hardcode tick values. Always derive tick boundaries using TickMath helpers with `chainPool.currentTickIndex` and `chainPool.tickSpacing`. Hardcoded ticks that are not multiples of `tickSpacing` will create un-initializable positions.**
+
+**`TickMath` is imported from `@fullsailfinance/sdk` — verify import path before use.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK
+// TickMath: verify import from @fullsailfinance/sdk
+// Always derive tick boundaries from pool state — never hardcode tick values.
+// Ticks must be multiples of tickSpacing; TickMath enforces this automatically.
+
+const chainPool = await fullSailSDK.Pool.getByIdFromChain(poolId)
+
+const tickLower = TickMath.getPrevInitializableTickIndex(
+  chainPool.currentTickIndex,
+  chainPool.tickSpacing
+)
+const tickUpper = TickMath.getNextInitializableTickIndex(
+  chainPool.currentTickIndex,
+  chainPool.tickSpacing
+)
+```
+
+---
+
 ## Rewards and oSAIL
 
 <!-- Phase 3 -->
