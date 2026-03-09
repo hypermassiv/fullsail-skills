@@ -980,7 +980,133 @@ Full Sail uses a 7-day voting epoch cycle. Each epoch starts a new oSAIL emissio
 
 ## Locks and veSAIL
 
-<!-- Phase 4 -->
+The veSAIL lock lifecycle — create, increase, merge, split, transfer, and toggle permanent status — is managed via the `Lock` namespace. All `*Transaction` methods return unsigned `Transaction` objects and must be signed and submitted separately. Governance voting (`batchVoteTransaction`) is documented in ## Governance Voting.
+
+### Lock.createLockTransaction()
+
+Creates a new veSAIL lock by depositing SAIL tokens.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| amount | bigint | SAIL amount to lock (9 decimal places) |
+| isPermanent | boolean | true = permanent lock (no expiry, max voting power) |
+| durationDays | number | Lock duration in days — ignored if isPermanent is true |
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+**`createLockTransaction` accepts exactly three parameters: `amount`, `isPermanent`, `durationDays`. There is no `sailCoinType` parameter — SAIL is implied. Passing an unknown parameter will cause the call to fail silently or error.**
+
+**If `isPermanent` is true, `durationDays` is ignored. Permanent locks hold max voting power with no expiry.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK.md (fetched 2026-03-09)
+// Returns unsigned Transaction — must be signed and submitted separately
+// No sailCoinType parameter — SAIL is implied
+
+const transaction = await fullSailSDK.Lock.createLockTransaction({
+  amount: 1000000n,        // SAIL amount in base units (9 decimals)
+  isPermanent: false,      // true = permanent lock (max voting power, no expiry)
+  durationDays: 365 * 4,  // lock duration in days
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+---
+
+### Lock.createLockFromOSailTransaction()
+
+Creates a new veSAIL lock by converting oSAIL tokens. Requires a fresh oSAIL coin type from the current epoch.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| oSailCoinType | string | Current epoch oSAIL coin type — from `getCurrentEpochOSail().address` |
+| amount | bigint | oSAIL amount to lock (9 decimal places) |
+| isPermanent | boolean | true = permanent lock (no expiry, max voting power) |
+| durationDays | number | Lock duration in days — ignored if isPermanent is true |
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+**`oSailCoinType` must come from `await fullSailSDK.Coin.getCurrentEpochOSail()` called fresh before this transaction. Never cache the coin type across sessions or epoch boundaries — the oSAIL coin type changes every epoch.**
+
+**This method converts oSAIL to veSAIL in a single transaction. For a combined oSAIL claim + lock creation from a staked position, see `Lock.claimOSailAndCreateLockTransaction()`.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK.md (fetched 2026-03-09)
+// Returns unsigned Transaction — must be signed and submitted separately
+// Call getCurrentEpochOSail() fresh — never use a cached value
+
+const currentEpochOSail = await fullSailSDK.Coin.getCurrentEpochOSail()
+
+const transaction = await fullSailSDK.Lock.createLockFromOSailTransaction({
+  amount: 1000000n,
+  oSailCoinType: currentEpochOSail.address, // fresh call required — not cached
+  durationDays: 365 * 4,
+  isPermanent: false,
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+---
+
+### Lock.increaseAmountTransaction()
+
+Adds more SAIL to an existing lock without changing its duration or permanence status.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| lockId | string | ID of the existing lock to increase |
+| amount | bigint | Additional SAIL to add (9 decimal places) |
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+**`increaseAmountTransaction` adds SAIL to the lock — it does not change duration or permanence status. To extend duration, use `Lock.increaseDurationTransaction()`.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK.md (fetched 2026-03-09)
+// Returns unsigned Transaction — must be signed and submitted separately
+
+const transaction = await fullSailSDK.Lock.increaseAmountTransaction({
+  lockId,
+  amount: 500000n, // additional SAIL to add (9 decimals)
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+---
+
+### Lock.increaseDurationTransaction()
+
+Extends the duration of an existing time-limited lock. Not applicable to permanent locks.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| lockId | string | ID of the existing lock to extend |
+| durationDays | number | New duration in days — see CAUTION below |
+
+**Returns unsigned Transaction — must be signed and submitted separately.**
+
+**CAUTION (LOW CONFIDENCE): Whether `durationDays` adds to the lock's existing remaining duration or sets an absolute new total duration is NOT confirmed in the SDK documentation. Test with a non-permanent lock on a testnet before using in production.**
+
+**Not applicable to permanent locks — permanent locks have no expiry and cannot have their duration modified via this method.**
+
+```typescript
+// Source: https://docs.fullsail.finance/developer/SDK.md (fetched 2026-03-09)
+// Returns unsigned Transaction — must be signed and submitted separately
+// CAUTION: Whether durationDays adds to existing duration or sets absolute duration
+// is NOT confirmed in SDK docs — verify behavior before use in production.
+
+const transaction = await fullSailSDK.Lock.increaseDurationTransaction({
+  lockId,
+  durationDays: 365 * 4, // days — verify add-vs-replace semantics before use
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+---
 
 ## Governance Voting
 
