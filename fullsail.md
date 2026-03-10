@@ -974,6 +974,18 @@ const lockTx = await fullSailSDK.Lock.createLockFromOSailTransaction({
 })
 ```
 
+**oSAIL Conversion Rates**
+
+The SAIL received when exercising oSAIL depends on the chosen lock duration:
+
+| Lock Duration | SAIL per oSAIL | veSAIL per oSAIL |
+|---------------|----------------|------------------|
+| 6 months | 0.5625 | 0.0703 |
+| 2 years | 0.75 | 0.375 |
+| 4 years | 1.0 | 1.0 |
+
+**Formula:** `SAIL = oSAIL × (0.5 + duration_ratio × 0.5)` where `duration_ratio = lock_duration / max_duration` (max = 4 years = 1461 days). Longer locks receive more SAIL and more veSAIL per oSAIL redeemed.
+
 **Option B: DEPRECATED — SAIL+USDC exercise (`exercise_o_sail`) is deprecated**
 
 > **DEPRECATED:** The paid exercise path (redeeming oSAIL for SAIL+USDC) has been deprecated in the protocol. Do not use this path. Use Option A (lock as veSAIL) or free exercise instead.
@@ -991,6 +1003,16 @@ Full Sail uses a 7-day voting epoch cycle. Each epoch starts a new oSAIL emissio
 | Impact on claims | `claimOSailTransaction` must use current epoch's `oSailCoinType` |
 
 **Epoch timing affects oSAIL expiry calculations. If operating near an epoch boundary, oSAIL may expire between when it was earned and when the claim transaction is submitted.**
+
+---
+
+### oSAIL Type Validation (is_valid_o_sail_type)
+
+`is_valid_o_sail_type` is a contract-level method for validating whether a historical oSAIL coin type is recognized by the protocol. Each epoch issues a unique oSAIL coin type — historical oSAIL coin types from prior epochs may need validation before being submitted to protocol operations.
+
+**When to use:** When handling oSAIL tokens that may have been collected across multiple epochs (for example, from a wallet holding oSAIL from past emissions), call `is_valid_o_sail_type` to confirm the coin type is a recognized Full Sail oSAIL type before attempting any protocol operation with it.
+
+**Note:** This is a contract-level function, not an SDK namespace method. Invocation requires direct contract interaction via the Sui RPC or a Sui PTB (programmable transaction block) targeting the Full Sail protocol package. Verify the exact call pattern from the Full Sail contract ABI or protocol documentation before use.
 
 ---
 
