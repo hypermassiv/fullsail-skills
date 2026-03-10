@@ -1,7 +1,7 @@
 ---
 name: fullsail-dex
 description: Practical skill for integrating Full Sail DEX on Sui — swaps, concentrated liquidity, veSAIL governance, vaults, and prediction voting using @fullsailfinance/sdk.
-version: 1.0.0
+version: 1.2.0
 capabilities:
   - swap-routing
   - concentrated-liquidity
@@ -10,14 +10,14 @@ capabilities:
   - governance-voting
   - vault-integration
   - prediction-voting
-last-validated: 2026-03-08
+last-validated: 2026-03-10
 ---
 
 # Full Sail Skill
 
-**Version:** 1.0.0
-**Last validated:** 2026-03-08
-**SDK:** `@fullsailfinance/sdk` (verify current version before use)
+**Version:** 1.2.0
+**Last validated:** 2026-03-10
+**SDK:** `@fullsailfinance/sdk@8.3.0`
 **Network:** Sui Mainnet
 
 > This skill is self-contained. No external references are required to use it.
@@ -41,7 +41,7 @@ Use this table to jump directly to the relevant section for your current task.
 | Check oSAIL expiry and redeem | [§Rewards and oSAIL > oSAIL Expiry Check](#osail-expiry-check) |
 | Create a veSAIL lock | [§Locks and veSAIL > Lock.createLockTransaction()](#lockcreatelocktransaction) |
 | Vote on governance pools | [§Governance Voting > Lock.batchVoteTransaction()](#lockbatchvotetransaction) |
-| Deposit into a vault | [§Vaults > Vault Deposit](#vault-deposit) |
+| Deposit into a vault | [§Vaults > Vault Deposit](#vault-deposit) (`PortEntry.createPortEntryTransaction()`) |
 | Submit a prediction vote | [§Prediction Voting > Creating and Submitting a Prediction Vote](#creating-and-submitting-a-prediction-vote) |
 | Debug a transaction failure | [§Pitfalls](#pitfalls) |
 
@@ -52,11 +52,11 @@ Use this table to jump directly to the relevant section for your current task.
 Install the Full Sail SDK and its peer dependency:
 
 ```bash
-npm i @fullsailfinance/sdk
+npm i @fullsailfinance/sdk@8.3.0
 npm i @mysten/sui
 ```
 
-> Verify the current `@fullsailfinance/sdk` version at https://www.npmjs.com/package/@fullsailfinance/sdk before publishing. The `@mysten/sui` peer dependency version requirement is declared in the SDK's package.json — check after install.
+> Current version: `8.3.0` (as of 2026-03-10). Check https://www.npmjs.com/package/@fullsailfinance/sdk for a newer release before publishing. The `@mysten/sui` peer dependency version requirement is declared in the SDK's package.json — check after install.
 
 Initialize the SDK once at application startup:
 
@@ -1138,23 +1138,21 @@ Extends the duration of an existing time-limited lock. Not applicable to permane
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | lockId | string | ID of the existing lock to extend |
-| durationDays | number | New duration in days — see CAUTION below |
+| durationDays | number | Lock duration in days — likely additive (adds to remaining duration) based on the underlying `increaseUnlockTime` contract method name, but not yet confirmed on testnet (MEDIUM confidence) |
 
 **Returns unsigned Transaction — must be signed and submitted separately.**
 
-**CAUTION (LOW CONFIDENCE): Whether `durationDays` adds to the lock's existing remaining duration or sets an absolute new total duration is NOT confirmed in the SDK documentation. Test with a non-permanent lock on a testnet before using in production.**
+**`durationDays` is likely additive — passing `365` probably extends the lock by 1 year from its current expiry, not from now. Evidence: the underlying contract method is `increaseUnlockTime`, which implies adding time. However, this has not been confirmed on testnet (MEDIUM confidence — deferred to v1.3 VER-07).**
 
 **Not applicable to permanent locks — permanent locks have no expiry and cannot have their duration modified via this method.**
 
 ```typescript
-// Source: https://docs.fullsail.finance/developer/SDK.md (fetched 2026-03-09)
 // Returns unsigned Transaction — must be signed and submitted separately
-// CAUTION: Whether durationDays adds to existing duration or sets absolute duration
-// is NOT confirmed in SDK docs — verify behavior before use in production.
+// durationDays is likely additive (extends from current expiry), not absolute — MEDIUM confidence, see note above
 
 const transaction = await fullSailSDK.Lock.increaseDurationTransaction({
   lockId,
-  durationDays: 365 * 4, // days — verify add-vs-replace semantics before use
+  durationDays: 365 * 4, // new expiry = 4 years from now
 })
 
 const result = await wallet.signAndExecuteTransaction({ transaction })
@@ -1366,7 +1364,7 @@ Votes cast during the voting window allocate veSAIL voting power across liquidit
 
 **If no vote is cast in an epoch, the lock earns no governance fee share for that epoch. There is no carry-forward from prior epochs.**
 
-**Votes can be adjusted at any point during the voting window by calling `Lock.batchVoteTransaction()` again. A new call replaces the prior vote allocation from the specified locks (MEDIUM confidence — functionally implied by "adjust votes" language; verify from SDK source if exact replace-vs-accumulate behavior is critical).**
+**Votes can be adjusted at any point during the voting window by calling `Lock.batchVoteTransaction()` again. A new call replaces the prior vote allocation for the specified locks — no reset call is needed beforehand.**
 
 ---
 
@@ -1521,116 +1519,194 @@ This section covers Full Sail's automated vault system — delegated liquidity m
 
 ### Vault Purpose
 
-Full Sail vaults provide automated yield strategies on top of concentrated liquidity positions. A vault accepts deposit of one or both pool tokens, issues vault shares to the depositor, and manages the underlying position autonomously — rebalancing tick ranges, compounding accrued fees and rewards back into the position, and optimizing capital efficiency without requiring the depositor to monitor or adjust the position manually.
+Full Sail vaults provide automated yield strategies on top of concentrated liquidity positions. A vault accepts deposit of one or both pool tokens and manages the underlying position autonomously — rebalancing tick ranges, compounding accrued fees and rewards back into the position, and optimizing capital efficiency without requiring the depositor to monitor or adjust the position manually.
 
 | Property | Value |
 |----------|-------|
 | What vaults manage | Full Sail concentrated liquidity positions |
-| Deposit output | Vault shares (redeemable for underlying position value) |
+| SDK module | `fullSailSDK.PortEntry` (user-facing) + `fullSailSDK.Port` (oracle helpers) |
 | Compounding | Automatic — fees and rewards reinvested each epoch |
 | Range management | Automatic — vault adjusts ticks based on price movement |
 | Vault eligibility | Per-pool — only vault-enabled pools support this; check for compass icon in Full Sail app |
 
 Vaults are not available for every pool. A pool must have vault support enabled (marked with a compass icon in the Full Sail app UI). Agents must confirm vault eligibility for a pool before attempting vault deposit — there is no SDK method to check vault eligibility at runtime; use the pool list from the Full Sail app or a known vault-enabled pool ID.
 
-**Vault shares represent a proportional claim on the underlying vault position — their value changes as the vault compounds and rebalances. Do not treat share amounts as stable token balances.**
-
 **Vault-enabled pools are a subset of all Full Sail pools. Verify the pool supports vaults before calling any vault transaction.**
 
 ---
 
-### Chain Pool Requirement
+### SDK Terminology
 
-All vault `*Transaction` calls require a Chain Pool — a real-time pool object fetched via `Pool.getByIdFromChain(poolId)`. Do not use a Backend Pool (`Pool.getById()`). This is the universal rule established in ## Protocol Fundamentals and applies equally to vault operations.
+The vault feature uses different naming in the SDK than in the UI:
+
+| UI / Docs term | SDK term | Description |
+|----------------|----------|-------------|
+| Vault | Port (`Port` interface) | The vault-managed strategy for a pool |
+| Vault entry / user position | PortEntry (`PortEntry` interface) | A user's position within a vault |
+| Deposit | `PortEntry.createPortEntryTransaction()` | Opens a new vault position |
+| Add liquidity | `PortEntry.addLiquidityTransaction()` | Increases an existing vault position |
+| Withdraw | `PortEntry.removeLiquidityTransaction()` | Partially exits a vault position |
+| Close | `PortEntry.closeTransaction()` | Fully exits and destroys a vault position |
+
+---
+
+### Getting Vault IDs
+
+Every vault transaction requires three IDs: `poolId`, `portId`, and `gaugeId`. All three can be retrieved in a single backend API call.
 
 ```typescript
-// WRONG — stale state; use getByIdFromChain for vault transactions
-const backendPool = await fullSailSDK.Pool.getById(poolId)
-// await fullSailSDK.Vault.depositTransaction({ poolId: backendPool.id, ... }) // DO NOT USE
+// Fetch pool + associated ports in one call
+// sdk.api is the backend REST client exposed by FullSailSDK
+const { pool, ports } = await sdk.api.pools.byAddressDetail(poolId)
+// pool.id       → poolId  (same as the input poolId)
+// pool.gauge_id → gaugeId (undefined if pool has no gauge — i.e. vault not supported)
+// ports[0].id   → portId  (the vault / Port object ID)
 ```
+
+**If `pool.gauge_id` is `undefined`, the pool does not support vaults. Do not proceed.**
+
+To retrieve a user's existing PortEntry (needed for add liquidity, withdraw, close):
 
 ```typescript
-// Source: https://docs.fullsail.finance/developer/SDK.md (fetched 2026-03-10)
-// CORRECT — real-time tick state required for vault transactions
-const chainPool = await fullSailSDK.Pool.getByIdFromChain(poolId)
-// proceed to vault deposit or withdrawal using chainPool.id
+// Returns Strategy { port_entry: PortEntry, port: Port }
+const strategy = await fullSailSDK.PortEntry.getById(portEntryId)
+// portEntryId is the Sui object ID of the user's PortEntry — found in the user's owned objects
 ```
 
-**Call `Pool.getByIdFromChain(poolId)` before every vault `*Transaction` call. Backend Pool (`getById`) is for display calculations only — never pass it to vault transactions.**
+---
 
-**This is the same Chain Pool rule that applies to all Full Sail `*Transaction` calls. Vaults are not an exception.**
+### Getting Oracle Price IDs
+
+Vault deposit and withdrawal params require oracle price IDs for each token. Fetch them from the Port module before building the transaction:
+
+```typescript
+const [pythPriceIdA, pythPriceIdB, aggregatorPriceIdA, aggregatorPriceIdB] = await Promise.all([
+  fullSailSDK.Port.getPythPriceFeedId({ coinType: coinTypeA }),
+  fullSailSDK.Port.getPythPriceFeedId({ coinType: coinTypeB }),
+  fullSailSDK.Port.getAggregatorPriceId({ coinType: coinTypeA }),
+  fullSailSDK.Port.getAggregatorPriceId({ coinType: coinTypeB }),
+])
+// Each returns string | null — pass null if the oracle doesn't exist for that token
+```
+
+---
 
 ### Vault Deposit
 
-Deposits tokens into a vault-managed position and returns vault shares.
+Opens a new vault position by depositing tokens. Uses `PortEntry.createPortEntryTransaction()`.
 
-> **PRECONDITION:** The pool must have vault support enabled (compass icon). Fetch a Chain Pool before calling: `const chainPool = await fullSailSDK.Pool.getByIdFromChain(poolId)`.
+> **PRECONDITION:** The pool must have vault support enabled (compass icon). Confirm `pool.gauge_id` is defined before proceeding.
 
-> **NOTE:** Vault deposit SDK method signatures are not published in the current public SDK documentation (`@fullsailfinance/sdk` as of 2026-03-10 lists no `Vault` namespace). The method and parameters below follow the project naming convention (`*Transaction` returns unsigned) but are INFERRED from UI tutorial behavior. **Verify exact method name and parameters at `https://docs.fullsail.finance/developer/SDK.md` before use.**
+| Parameter | Type | Source |
+|-----------|------|--------|
+| `coinTypeA` | `SuiCoinType` | Pool token A type |
+| `coinTypeB` | `SuiCoinType` | Pool token B type |
+| `amountA` | `bigint` | Token A deposit amount in base units |
+| `amountB` | `bigint` | Token B deposit amount in base units |
+| `poolId` | `SuiObjectId` | From `pool.id` (backend API) |
+| `gaugeId` | `SuiObjectId` | From `pool.gauge_id` (backend API) |
+| `portId` | `SuiObjectId` | From `ports[0].id` (backend API) |
+| `pythPriceIdA/B` | `string \| null` | From `Port.getPythPriceFeedId()` |
+| `aggregatorPriceIdA/B` | `string \| null` | From `Port.getAggregatorPriceId()` |
+| `rewardCoinTypes` | `SuiCoinType[]` | Reward token types for the port (from `port.rewards`) |
+| `currentOSailCoinType` | `SuiCoinType` | Active oSAIL coin type |
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| poolId | string | Vault-enabled pool ID — use `chainPool.id` from `Pool.getByIdFromChain()` |
-| amountA | bigint | Token A deposit amount in base units |
-| amountB | bigint | Token B deposit amount in base units |
-
-Returns unsigned Transaction — must be signed and submitted separately.
+Returns unsigned `Transaction` — must be signed and submitted separately.
 
 ```typescript
-// UNVERIFIED — Vault SDK method signatures are NOT confirmed in public docs as of 2026-03-10
-// Verify exact parameters at https://docs.fullsail.finance/developer/SDK.md before use
-// Pattern follows project convention: *Transaction returns unsigned Transaction
+// 1. Fetch vault IDs
+const { pool, ports } = await sdk.api.pools.byAddressDetail(poolId)
+const portId = ports[0].id
+const gaugeId = pool.gauge_id!  // assert non-null after eligibility check
 
-// VAULT-04: Chain Pool required for vault transactions
-const chainPool = await fullSailSDK.Pool.getByIdFromChain(poolId)
+// 2. Fetch oracle price IDs
+const [pythPriceIdA, pythPriceIdB, aggregatorPriceIdA, aggregatorPriceIdB] = await Promise.all([
+  fullSailSDK.Port.getPythPriceFeedId({ coinType: coinTypeA }),
+  fullSailSDK.Port.getPythPriceFeedId({ coinType: coinTypeB }),
+  fullSailSDK.Port.getAggregatorPriceId({ coinType: coinTypeA }),
+  fullSailSDK.Port.getAggregatorPriceId({ coinType: coinTypeB }),
+])
 
-const transaction = await fullSailSDK.Vault.depositTransaction({
-  poolId: chainPool.id,
-  amountA: 1000000n,  // token A amount in base units
-  amountB: 1000000n,  // token B amount in base units
+// 3. Build and submit deposit transaction
+const transaction = await fullSailSDK.PortEntry.createPortEntryTransaction({
+  coinTypeA,
+  coinTypeB,
+  amountA: 1_000_000n,
+  amountB: 1_000_000n,
+  poolId: pool.id,
+  gaugeId,
+  portId,
+  pythPriceIdA,
+  pythPriceIdB,
+  aggregatorPriceIdA,
+  aggregatorPriceIdB,
+  rewardCoinTypes: ports[0].rewards.map(r => r.token.coin_type),
+  currentOSailCoinType,  // active oSAIL coin type from protocol config
 })
 
 const result = await wallet.signAndExecuteTransaction({ transaction })
-// Returns vault shares — store for later withdrawal
 ```
 
-**`// UNVERIFIED` — The `Vault` namespace is not documented in the public `@fullsailfinance/sdk` as of 2026-03-10. Verify `fullSailSDK.Vault.depositTransaction` exists and confirm parameter names before calling in production.**
-
-**The `poolId` parameter must be `chainPool.id` from `Pool.getByIdFromChain()` — not from `Pool.getById()`. Backend Pool causes positioning errors.**
+**`poolId`, `gaugeId`, and `portId` must all come from the same backend API response — do not mix IDs from different sources.**
 
 ---
 
 ### Vault Withdrawal
 
-Redeems vault shares for the underlying position value at current vault NAV.
+Exits a vault position partially or fully. Use `removeLiquidityTransaction()` to withdraw a portion; use `closeTransaction()` to withdraw everything and destroy the PortEntry object.
 
-> **NOTE:** Vault withdrawal SDK method signatures are not published in the current public SDK documentation (`@fullsailfinance/sdk` as of 2026-03-10 lists no `Vault` namespace). The method and parameters below follow the project naming convention but are INFERRED. **Verify exact method name and parameters at `https://docs.fullsail.finance/developer/SDK.md` before use.**
+> **PRECONDITION:** You need the user's `portEntryId` — the Sui object ID of their PortEntry — from their owned objects on-chain.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| poolId | string | Vault-enabled pool ID — use `chainPool.id` from `Pool.getByIdFromChain()` |
-| shares | bigint | Vault share amount to redeem (received from prior deposit) |
+`PortEntryRemoveLiquidityParams` extends the deposit params with additional fields:
 
-Returns unsigned Transaction — must be signed and submitted separately.
+| Additional parameter | Type | Description |
+|----------------------|------|-------------|
+| `portEntryId` | `SuiObjectId` | User's PortEntry object ID |
+| `volume` | `bigint` | Share volume to withdraw |
+| `amountA` / `amountB` | `bigint` | Current position token amounts (for slippage calc) |
+| `tickLower` / `tickUpper` | `number` | Current position tick range |
+| `liquidity` | `bigint` | Current position liquidity |
+| `currentSqrtPrice` | `bigint` | Current pool sqrt price |
+| `slippage` | `Percentage` | Maximum acceptable slippage |
+| `portRewardCoinTypes` | `SuiCoinType[]` | Port incentive reward types |
+| `poolRewardCoinTypes` | `SuiCoinType[]` | Pool trading reward types |
+| `oSailRewards` | `Array<{ coinType, amount, expired }>` | Pending oSAIL rewards |
 
 ```typescript
-// UNVERIFIED — Vault SDK method signatures are NOT confirmed in public docs as of 2026-03-10
-// Verify exact parameters at https://docs.fullsail.finance/developer/SDK.md before use
+// Partial withdrawal — remove liquidity but keep PortEntry alive
+const transaction = await fullSailSDK.PortEntry.removeLiquidityTransaction({
+  coinTypeA,
+  coinTypeB,
+  poolId,
+  gaugeId,
+  portId,
+  portEntryId,
+  volume,            // bigint — share volume to withdraw
+  pythPriceIdA,
+  pythPriceIdB,
+  aggregatorPriceIdA,
+  aggregatorPriceIdB,
+  // Position state for slippage calculation:
+  amountA, amountB, tickLower, tickUpper, liquidity, currentSqrtPrice,
+  slippage,
+  // Reward claim params (pass empty arrays if no pending rewards):
+  portRewardCoinTypes,
+  poolRewardCoinTypes,
+  oSailRewards,
+  // ... additional reward claim fields (see PortEntryClaimAllRewardsParam)
+})
 
-// VAULT-04: Chain Pool required for vault transactions
-const chainPool = await fullSailSDK.Pool.getByIdFromChain(poolId)
-
-const transaction = await fullSailSDK.Vault.withdrawTransaction({
-  poolId: chainPool.id,
-  shares: shareAmount,  // vault share amount to redeem
+// Full exit — withdraws all liquidity and destroys the PortEntry object
+const transaction = await fullSailSDK.PortEntry.closeTransaction({
+  // Same params as removeLiquidityTransaction, plus:
+  // portEntryId is also used for the destroy call (included via PortEntryCloseParams)
+  ...removeLiquidityParams,
 })
 
 const result = await wallet.signAndExecuteTransaction({ transaction })
 ```
 
-**`// UNVERIFIED` — The `Vault` namespace is not documented in the public `@fullsailfinance/sdk` as of 2026-03-10. Verify `fullSailSDK.Vault.withdrawTransaction` exists and confirm parameter names before calling in production.**
-
-**Pass the `shares` value received from the deposit receipt — do not derive share amounts independently. Share amounts are minted by the vault at deposit time.**
+**Use `closeTransaction()` when fully exiting — it destroys the PortEntry object and reclaims the deposit. Use `removeLiquidityTransaction()` for partial exits.**
 
 ---
 
