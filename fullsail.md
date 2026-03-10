@@ -1742,13 +1742,13 @@ const lock = await fullSailSDK.Lock.createLockFromOSailTransaction({
 ```
 
 ```typescript
-// CORRECT — fetch current epoch oSAIL, check expiry, then use its coinType
+// CORRECT — fetch current epoch oSAIL, check expiry, then use its address
 const currentOSail = await fullSailSDK.Coin.getCurrentEpochOSail();
-if (Date.now() > currentOSail.expiry) {
+if (Date.now() > currentOSail.expiry) { // .expiry field name unconfirmed — verify against SDK type definitions
   throw new Error("oSAIL is expired for this epoch — cannot proceed");
 }
 const lock = await fullSailSDK.Lock.createLockFromOSailTransaction({
-  oSailCoinType: currentOSail.coinType, // confirmed fresh and unexpired
+  oSailCoinType: currentOSail.address, // confirmed fresh and unexpired
   // ...
 });
 ```
@@ -1809,13 +1809,13 @@ Check whether the position has a `stake_info` field populated before selecting a
 
 ```typescript
 // WRONG — setSenderAddress called at init time, before wallet is connected
-const fullSailSDK = new FullSailSDK({ /* config */ });
+const fullSailSDK = initFullSailSDK({ /* config */ });
 fullSailSDK.setSenderAddress(walletAddress); // wallet not yet confirmed connected
 ```
 
 ```typescript
 // CORRECT — setSenderAddress called in wallet connect callback, after connection confirmed
-const fullSailSDK = new FullSailSDK({ /* config */ });
+const fullSailSDK = initFullSailSDK({ /* config */ });
 
 walletClient.on("connect", (wallet) => {
   fullSailSDK.setSenderAddress(wallet.address); // called after confirmed connect
