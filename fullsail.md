@@ -485,13 +485,13 @@ Stakes an existing unstaked position into a gauge. Use when the position was cre
 | `positionId` | `string` | Position object ID |
 | `gaugeId` | `string` | From Backend Pool — `pool.gauge_id` |
 
-**Only trading fees are auto-claimed during `stakeTransaction` — pool rewards are not. This differs from `addLiquidityTransaction`, which auto-claims oSAIL.**
+**No rewards are auto-claimed during `stakeTransaction`. Trading fees require `claimFeeTransaction`; pool rewards require their respective claim methods. This differs from `addLiquidityTransaction`, which auto-claims oSAIL.**
 
 ```typescript
 // Source: https://docs.fullsail.finance/developer/SDK
 // Use for positions created without gaugeId — stakes into gauge retroactively
 // Returns unsigned Transaction — must be signed and submitted separately
-// NOTE: Only fees auto-claimed in this transaction. Pool rewards are not.
+// NOTE: No rewards auto-claimed in this transaction. Fees require claimFeeTransaction; pool rewards require explicit claim.
 
 const pool = await fullSailSDK.Pool.getById(poolId)
 
