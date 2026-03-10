@@ -149,7 +149,7 @@ Full Sail has three token types. Understanding each prevents routing and redempt
 
 Rules:
 - oSAIL is valid for redemption and locking for 5 weeks from the epoch it was issued
-- After the 5-week window: the only valid operation is locking as veSAIL
+- After the 5-week window: the only valid operation is locking as veSAIL — only a 4-year (1461-day) or permanent lock is accepted; shorter durations fail
 - Attempting to redeem expired oSAIL will fail
 
 **Check oSAIL expiry before every oSAIL operation.** Do not assume oSAIL is valid. Verify the token's epoch against the current epoch before calling any oSAIL transaction method.
@@ -974,12 +974,9 @@ const lockTx = await fullSailSDK.Lock.createLockFromOSailTransaction({
 })
 ```
 
-**Option B: Redeem for SAIL + USDC (50% of SAIL spot price at redemption, paid in USDC)**
+**Option B: DEPRECATED — SAIL+USDC exercise (`exercise_o_sail`) is deprecated**
 
-- No SDK method confirmed for this path — may be protocol UI only
-- Verify from SDK docs before attempting programmatic redemption. If no SDK method exists, use the Full Sail app UI.
-
-**The lock path (Option A) has confirmed SDK methods. The SAIL+USDC redemption path (Option B) has no confirmed SDK method — verify before implementing.**
+> **DEPRECATED:** The paid exercise path (redeeming oSAIL for SAIL+USDC) has been deprecated in the protocol. Do not use this path. Use Option A (lock as veSAIL) or free exercise instead.
 
 ---
 
