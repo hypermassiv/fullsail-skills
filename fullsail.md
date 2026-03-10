@@ -1588,7 +1588,7 @@ The protocol aggregates all submitted volume predictions from veSAIL holders. At
 
 - **Do NOT look for a `Prediction` namespace, `createPrediction()`, or `submitPrediction()` method in `@fullsailfinance/sdk`. No such method exists. Prediction voting is `Lock.batchVoteTransaction()` with `volume` populated.**
 - **`volume: 0n` is a valid call (will not revert) but submits a null prediction. It will score near-zero accuracy against any positive actual trading volume, earning minimal accuracy reward. Always pass your best volume estimate.**
-- **veSAIL holders who do NOT submit `batchVoteTransaction` during the voting window receive ZERO fee share for that epoch — neither the 80% passive portion nor the 20% accuracy portion. Missing an epoch forfeits all fee share for that epoch.**
+- **veSAIL holders who do NOT submit `batchVoteTransaction` during the voting window receive ZERO accuracy share for that epoch — the 20% active predictor portion requires voting. The 80% passive share flows to all veSAIL holders proportionally regardless of voting status.**
 
 ---
 
@@ -1652,11 +1652,10 @@ At the close of each epoch, the protocol automatically distributes governance fe
 
 | Allocation | Share | Recipients |
 |------------|-------|------------|
-| Insurance fund | 5% of total fees | Protocol insurance reserve |
-| Passive veSAIL distribution | 80% of remaining 95% | All veSAIL holders (proportional to veSAIL balance) — requires voting participation |
-| Active predictor accuracy rewards | 20% of remaining 95% | veSAIL holders who submitted batchVoteTransaction with volume, weighted by prediction accuracy |
+| Passive veSAIL distribution | 80% of total fees | All veSAIL holders with active veSAIL balance (proportional to balance) — no voting required |
+| Active predictor accuracy rewards | 20% of total fees | veSAIL holders who submitted batchVoteTransaction with volume, weighted by prediction accuracy |
 
-Both the 80% passive share and the 20% accuracy share require voting participation during the epoch — veSAIL holders who did not submit `batchVoteTransaction` receive neither share.
+The 80% passive share flows to all veSAIL holders proportionally — no voting required. The 20% accuracy share requires submitting `batchVoteTransaction` with a volume prediction — veSAIL holders who do not vote receive zero accuracy share for that epoch.
 
 The protocol computes reward distribution on-chain using the following formula:
 
