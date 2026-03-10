@@ -1370,6 +1370,31 @@ Votes cast during the voting window allocate veSAIL voting power across liquidit
 
 ---
 
+### Fee Reward Timing
+
+Fee rewards are not distributed in the same epoch they are collected. The timing differs by reward type:
+
+| Reward Type | When Available |
+|-------------|----------------|
+| Trading fee rewards (80% passive) | Epoch N+2 — two-week delay after collection epoch |
+| oSAIL exercise fee rewards | End of epoch N — available immediately at epoch close |
+
+**Trading fee rewards collected in epoch N are distributed in epoch N+2 — there is a two-week delay.** An agent expecting trading fee rewards from the current epoch will not receive them until two epochs later.
+
+**oSAIL redemption (exercise) fee rewards are available immediately at epoch end** — unlike trading fee rewards, there is no multi-epoch delay.
+
+---
+
+### Managed Lock Fee Restriction
+
+A lock can be deposited into a managed escrow position (for example, by a third-party protocol or automated vault). Such locks are detectable by checking `escrow_type.is_locked() == true` on the lock object.
+
+**Locks with `escrow_type.is_locked() == true` cannot claim passive fees.** The managed escrow state blocks passive fee distribution for that lock.
+
+**Rule:** Before claiming passive governance fees for a lock, check `escrow_type.is_locked()`. If `true`, passive fee claims will fail or return zero — the lock is in managed escrow and passive fees are not claimable directly by the lock owner.
+
+---
+
 ### Lock.batchVoteTransaction()
 
 Allocates veSAIL voting power from one or more locks across liquidity pools. Voting determines fee distribution for the epoch.
