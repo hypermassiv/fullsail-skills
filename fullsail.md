@@ -1020,6 +1020,22 @@ Full Sail uses a 7-day voting epoch cycle. Each epoch starts a new oSAIL emissio
 
 The veSAIL lock lifecycle — create, increase, merge, split, transfer, and toggle permanent status — is managed via the `Lock` namespace. All `*Transaction` methods return unsigned `Transaction` objects and must be signed and submitted separately. Governance voting (`batchVoteTransaction`) is documented in ## Governance Voting.
 
+### Voting Power
+
+veSAIL voting power is proportional to both the locked SAIL amount and the lock duration relative to the maximum duration (4 years = 1461 days):
+
+**Formula:** `voting_power = locked_amount × (lock_duration / max_duration)`
+
+| Example | Locked SAIL | Lock Duration | Voting Power (veSAIL) |
+|---------|-------------|---------------|----------------------|
+| Max lock | 1 SAIL | 4 years | 1 veSAIL |
+| Half duration | 1 SAIL | 2 years | 0.5 veSAIL |
+| Minimum useful | 1 SAIL | 6 months | 0.125 veSAIL |
+
+**Permanent locks** (enabled via `Lock.enablePermanentTransaction()`) hold the equivalent of a max-duration lock — full voting power proportional to the locked SAIL amount, with no expiry.
+
+---
+
 ### Lock.createLockTransaction()
 
 Creates a new veSAIL lock by depositing SAIL tokens.
