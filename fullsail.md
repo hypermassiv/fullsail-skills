@@ -947,7 +947,7 @@ oSAIL expires 5 weeks after the epoch start in which it was issued. Each epoch h
 // Call fresh before every oSAIL operation — never cache across sessions.
 const currentEpochOSail = await fullSailSDK.Coin.getCurrentEpochOSail()
 // currentEpochOSail.address — current epoch oSAIL coin type address
-// Expiry field name on returned object: verify from SDK source
+// currentEpochOSail.expiration_timestamp — confirmed expiry field name
 ```
 
 **Call `getCurrentEpochOSail()` fresh before every oSAIL operation. A cached value from a previous session or epoch will be wrong.**
@@ -1806,7 +1806,7 @@ const lock = await fullSailSDK.Lock.createLockFromOSailTransaction({
 ```typescript
 // CORRECT — fetch current epoch oSAIL, check expiry, then use its address
 const currentOSail = await fullSailSDK.Coin.getCurrentEpochOSail();
-if (Date.now() > currentOSail.expiry) { // .expiry field name unconfirmed — verify against SDK type definitions
+if (Date.now() > currentOSail.expiration_timestamp) { // .expiration_timestamp — confirmed field name from SDK type definitions
   throw new Error("oSAIL is expired for this epoch — cannot proceed");
 }
 const lock = await fullSailSDK.Lock.createLockFromOSailTransaction({
