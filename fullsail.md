@@ -748,7 +748,7 @@ Claims accrued pool staking rewards for an unstaked position.
 | `positionId` | `string` | Position object ID |
 | `rewardCoinTypes` | `string[]` | Array of all reward coin type addresses for this pool |
 
-**`rewardCoinTypes` must include all reward coin type addresses for this pool. Derive from the pool object's reward token list — verify the field name from `Pool.getById()` return shape.**
+**`rewardCoinTypes` must include all reward coin type addresses for this pool. Derive from `pool.rewards?.map((r) => r.token.address)` — `Pool.getById()` returns a `PoolByAddressResponse` wrapper; destructure `{ pool }` from the response.**
 
 **Precondition: position must be unstaked.**
 
@@ -756,9 +756,9 @@ Claims accrued pool staking rewards for an unstaked position.
 // Source: https://docs.fullsail.finance/developer/SDK
 // Returns unsigned Transaction — must be signed and submitted separately
 
-const pool = await fullSailSDK.Pool.getById(poolId)
-// rewardCoinTypes: derive from pool object reward token list — verify field name from Pool.getById() return shape
-const rewardCoinTypes = pool.reward_tokens?.map((t: any) => t.address) ?? []
+const { pool } = await fullSailSDK.Pool.getById(poolId)  // PoolByAddressResponse — destructure pool
+// rewardCoinTypes: use pool.rewards — confirmed field name from PoolByAddressResponse
+const rewardCoinTypes = pool.rewards?.map((r) => r.token.address) ?? []
 
 const transaction = await fullSailSDK.Position.claimUnstakedPoolRewardsTransaction({
   coinTypeA: pool.token_a.address,
@@ -793,9 +793,9 @@ Combined call — claims both trading fees and pool rewards in a single transact
 // Source: https://docs.fullsail.finance/developer/SDK
 // Returns unsigned Transaction — must be signed and submitted separately
 
-const pool = await fullSailSDK.Pool.getById(poolId)
-// rewardCoinTypes: derive from pool object reward token list — verify field name from Pool.getById() return shape
-const rewardCoinTypes = pool.reward_tokens?.map((t: any) => t.address) ?? []
+const { pool } = await fullSailSDK.Pool.getById(poolId)  // PoolByAddressResponse — destructure pool
+// rewardCoinTypes: use pool.rewards — confirmed field name from PoolByAddressResponse
+const rewardCoinTypes = pool.rewards?.map((r) => r.token.address) ?? []
 
 const transaction = await fullSailSDK.Position.claimFeeAndUnstakedPoolRewardsTransaction({
   coinTypeA: pool.token_a.address,
@@ -869,16 +869,16 @@ Claims accrued pool staking rewards for a staked position.
 
 **Precondition: position must be staked.**
 
-**`rewardCoinTypes` must be exhaustive — see note in claimUnstakedPoolRewardsTransaction for derivation.**
+**`rewardCoinTypes` must be exhaustive — derive from `pool.rewards?.map((r) => r.token.address)` after destructuring `{ pool }` from `Pool.getById()` (see claimUnstakedPoolRewardsTransaction).**
 
 ```typescript
 // Source: https://docs.fullsail.finance/developer/SDK
 // Returns unsigned Transaction — must be signed and submitted separately
 
-const pool = await fullSailSDK.Pool.getById(poolId)
+const { pool } = await fullSailSDK.Pool.getById(poolId)  // PoolByAddressResponse — destructure pool
 const position = await fullSailSDK.Position.getById(positionId)
-// rewardCoinTypes: derive from pool object reward token list — verify field name from Pool.getById() return shape
-const rewardCoinTypes = pool.reward_tokens?.map((t: any) => t.address) ?? []
+// rewardCoinTypes: use pool.rewards — confirmed field name from PoolByAddressResponse
+const rewardCoinTypes = pool.rewards?.map((r) => r.token.address) ?? []
 
 const transaction = await fullSailSDK.Position.claimStakedPoolRewardsTransaction({
   coinTypeA: pool.token_a.address,
@@ -916,12 +916,12 @@ Combined call — claims both oSAIL and pool rewards in a single transaction for
 // Source: https://docs.fullsail.finance/developer/SDK
 // Returns unsigned Transaction — must be signed and submitted separately
 
-const pool = await fullSailSDK.Pool.getById(poolId)
+const { pool } = await fullSailSDK.Pool.getById(poolId)  // PoolByAddressResponse — destructure pool
 const position = await fullSailSDK.Position.getById(positionId)
 // Call getCurrentEpochOSail() fresh — never use a cached value
 const currentEpochOSail = await fullSailSDK.Coin.getCurrentEpochOSail()
-// rewardCoinTypes: derive from pool object reward token list — verify field name from Pool.getById() return shape
-const rewardCoinTypes = pool.reward_tokens?.map((t: any) => t.address) ?? []
+// rewardCoinTypes: use pool.rewards — confirmed field name from PoolByAddressResponse
+const rewardCoinTypes = pool.rewards?.map((r) => r.token.address) ?? []
 
 const transaction = await fullSailSDK.Position.claimOSailAndStakedPoolRewardsTransaction({
   coinTypeA: pool.token_a.address,
