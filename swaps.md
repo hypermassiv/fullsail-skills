@@ -4,7 +4,7 @@ The Full Sail SDK provides two swap paths — a router path (2 calls) and a dire
 
 ### oSAIL Swap Restriction
 
-> **oSAIL Swap Restriction:** oSAIL is an option token — it is not DEX-tradeable. Do not use oSAIL as `coinInType` or `coinOutType` in any swap route. To convert oSAIL to SAIL or USDC, use the redemption path — see `## Rewards and oSAIL`.
+> **oSAIL Swap Restriction:** oSAIL is an option token — it is not DEX-tradeable. Do not use oSAIL as `from` or `target` in any swap route. To convert oSAIL to SAIL or USDC, use the redemption path — see `## Rewards and oSAIL`.
 
 ### Swap.getSwapRoute()
 
@@ -12,61 +12,62 @@ Returns an optimized route across pools via the Aftermath router.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `coinInType` | `string` | Coin type address of the input token |
-| `coinOutType` | `string` | Coin type address of the output token |
-| `coinInAmount` | `bigint` | Amount of input token in base units |
+| `from` | `string` | Coin type address of the input token |
+| `target` | `string` | Coin type address of the output token |
+| `amount` | `bigint \| string \| number` | Amount of input token in base units |
 
-Return value: Returns a `completeRoute` object — pass it directly to `swapRouterTransaction`. The route structure is opaque; do not enumerate or manipulate its fields.
+Return value: Returns a `SwapRoute` object — pass it as `router` to `swapRouterTransaction`. The route structure is opaque; do not enumerate or manipulate its fields.
 
 ```typescript
 // Source: https://docs.fullsail.finance/developer/SDK
-const coinInType = '0x...'   // input token type address
-const coinOutType = '0x...'  // output token type address
-const coinInAmount = 1000000n // input amount in base units
+const from = '0x...'    // input token type address
+const target = '0x...'  // output token type address
+const amount = 1000000n // input amount in base units
 
-const completeRoute = await fullSailSDK.Swap.getSwapRoute({
-  coinInType,
-  coinOutType,
-  coinInAmount,
+const router = await fullSailSDK.Swap.getSwapRoute({
+  from,
+  target,
+  amount,
 })
-// completeRoute is opaque — pass directly to swapRouterTransaction
+// router is opaque — pass directly to swapRouterTransaction
 ```
 
 ---
 
 ### Swap.swapRouterTransaction()
 
-Builds the unsigned swap transaction using an Aftermath router route.
+Builds the unsigned swap transaction using a router route.
 
-**Returns unsigned transaction — must be signed and submitted via `wallet.signAndExecuteTransaction()`.**
+**Returns a tuple `[Transaction, TransactionObjectArgument]` — `[0]` is the transaction to sign; `[1]` is the output coin object argument.**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `completeRoute` | `object` | Route object from `getSwapRoute()` — pass directly |
-| `slippage` | `number` | Slippage as coefficient: use `Percentage.fromNumber(n).toCoefficient()` |
+| `router` | `SwapRoute` | Route object from `getSwapRoute()` — pass directly |
+| `slippage` | `Percentage` | `Percentage` object — e.g. `Percentage.fromNumber(1)` for 1% |
 
-The `Percentage` class is used for slippage. It is likely exported from `@fullsailfinance/sdk` — verify the import if a NameError occurs.
+`Percentage` is exported from `@fullsailfinance/sdk`.
 
 ```typescript
 // Source: https://docs.fullsail.finance/developer/SDK
 // Router path — 2 calls: getSwapRoute → swapRouterTransaction
 
-const coinInType = '0x...'   // input token type address
-const coinOutType = '0x...'  // output token type address
-const coinInAmount = 1000000n
-// Percentage: likely exported from @fullsailfinance/sdk — verify import
+import { Percentage } from '@fullsailfinance/sdk'
+
+const from = '0x...'    // input token type address
+const target = '0x...'  // output token type address
+const amount = 1000000n
 const slippage = Percentage.fromNumber(1) // 1% slippage
 
-const completeRoute = await fullSailSDK.Swap.getSwapRoute({
-  coinInType,
-  coinOutType,
-  coinInAmount,
+const router = await fullSailSDK.Swap.getSwapRoute({
+  from,
+  target,
+  amount,
 })
 
-// Returns unsigned Transaction — must be signed and submitted separately
-const transaction = await fullSailSDK.Swap.swapRouterTransaction({
-  completeRoute,
-  slippage: slippage.toCoefficient(),
+// Returns [Transaction, coinOutId] — destructure to get the transaction
+const [transaction, coinOut] = await fullSailSDK.Swap.swapRouterTransaction({
+  router,
+  slippage,
 })
 const result = await wallet.signAndExecuteTransaction({ transaction })
 ```
@@ -121,7 +122,7 @@ Builds the unsigned swap transaction for a direct pool swap.
 const poolId = '0x...'         // pool object ID — replace with real pool ID
 const coinInType = '0x...'     // input token type address
 const coinOutType = '0x...'    // output token type address
-// Percentage: likely exported from @fullsailfinance/sdk — verify import
+import { Percentage } from '@fullsailfinance/sdk'
 const slippage = Percentage.fromNumber(1) // 1% slippage
 const amount = 1000000n        // input amount in base units
 const byAmountIn = true        // true: amount is input; false: amount is desired output

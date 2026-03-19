@@ -125,7 +125,7 @@ const transaction = await fullSailSDK.PortEntry.createPortEntryTransaction({
   pythPriceIdB,
   aggregatorPriceIdA,
   aggregatorPriceIdB,
-  rewardCoinTypes: ports[0].rewards.map(r => r.token.coin_type),
+  rewardCoinTypes: ports[0].rewards.map(r => r.token.address),
   currentOSailCoinType,  // active oSAIL coin type from protocol config
 })
 

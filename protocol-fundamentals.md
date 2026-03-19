@@ -5,11 +5,11 @@
 Install the Full Sail SDK and its peer dependency:
 
 ```bash
-npm i @fullsailfinance/sdk@8.3.0
+npm i @fullsailfinance/sdk@9.0.0
 npm i @mysten/sui
 ```
 
-> Current version: `8.3.0` (as of 2026-03-10). Check https://www.npmjs.com/package/@fullsailfinance/sdk for a newer release before publishing. The `@mysten/sui` peer dependency version requirement is declared in the SDK's package.json — check after install.
+> Current version: `9.0.0` (as of 2026-03-10). Check https://www.npmjs.com/package/@fullsailfinance/sdk for a newer release before publishing. The `@mysten/sui` peer dependency version requirement is declared in the SDK's package.json — check after install.
 
 Initialize the SDK once at application startup:
 

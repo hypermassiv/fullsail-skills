@@ -190,7 +190,7 @@ await fullSailSDK.Position.removeLiquidityTransaction({
 ```typescript
 // WRONG — oSAIL has no DEX route; this call will fail
 const route = await fullSailSDK.Swap.getSwapRoute({
-  coinInType: oSailCoinType, // fails — no DEX route for oSAIL
+  from: oSailCoinType, // fails — no DEX route for oSAIL
   // ...
 });
 ```
