@@ -219,6 +219,30 @@ After calling `signAndExecuteTransaction()`, the returned result confirms submis
 
 ---
 
+### ERR-11: Passing `0x`-Prefixed Price IDs to Pyth Hermes
+
+**Failure mode:** Agent (or bot) passes Pyth price IDs that include the `0x` prefix directly to `getPriceFeedsUpdateData()` (via `PortModule.updatePrices` / `addLiquidityTransaction`). The Hermes API strips `0x` internally and then hex-decodes the remainder — but Sui stores 32-byte identifiers with leading zeros omitted, so the remainder can be an odd number of hex chars (e.g. 63), triggering: `HTTP 400 — Failed to deserialize query string. Error: Odd number of digits`.
+
+**Correct behavior:** Strip the `0x` prefix from every Pyth price ID before passing it to any Hermes/Pyth call.
+
+**Rule:** **Always strip the `0x` prefix from Pyth price IDs before passing them to Hermes — Sui price IDs are compressed and become odd-length hex strings when the prefix is not removed first.**
+
+```typescript
+// WRONG — price ID includes 0x prefix; Hermes will produce "Odd number of digits"
+const priceUpdateData = await connection.getPriceFeedsUpdateData([rawPriceId]);
+```
+
+```typescript
+// CORRECT — strip 0x prefix before passing to Hermes
+const priceUpdateData = await connection.getPriceFeedsUpdateData([
+  rawPriceId.replace(/^0x/, ''),
+]);
+```
+
+> **Note:** This applies to any price ID sourced from the Full Sail SDK (e.g., from `PortEntry` oracle fields). The SDK returns them with `0x`; Hermes requires them without.
+
+---
+
 ### Pre-Flight Checklist
 
 Before executing any Full Sail transaction, verify:
@@ -228,6 +252,7 @@ Before executing any Full Sail transaction, verify:
 - [ ] oSAIL expiry checked — fetched via `Coin.getCurrentEpochOSail()` and not past expiry ([§oSAIL Expiry Rule](protocol-fundamentals.md#osail-expiry-rule))
 - [ ] Position stake status determined before selecting claim method ([§Staked vs Unstaked Claim Path](rewards.md#staked-vs-unstaked-claim-path))
 - [ ] Transaction signed and executed via wallet client — not just constructed ([§Transaction Lifecycle Model](protocol-fundamentals.md#transaction-lifecycle-model))
+- [ ] Pyth price IDs have `0x` prefix stripped before passing to Hermes/`getPriceFeedsUpdateData` ([§ERR-11](#err-11-passing-0x-prefixed-price-ids-to-pyth-hermes))
 
 ---
 
