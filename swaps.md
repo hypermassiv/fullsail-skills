@@ -40,36 +40,45 @@ Builds the unsigned swap transaction using a router route.
 
 **Returns a tuple `[Transaction, TransactionObjectArgument]` — `[0]` is the transaction to sign; `[1]` is the output coin object argument.**
 
+> **Output coin must be consumed.** The returned `coinOut` is an unconsumed `TransactionObjectArgument`. Every Sui transaction must consume every object it touches — if `coinOut` is not transferred or passed into another call within the same transaction, the transaction will fail with a "dangling object" error. Use `isTransferToSender: true` for standalone swaps, or pass `coinOut` to a downstream call (e.g. `addLiquidityTransaction`) for composable flows.
+
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `router` | `SwapRoute` | Route object from `getSwapRoute()` — pass directly |
 | `slippage` | `Percentage` | `Percentage` object — e.g. `Percentage.fromNumber(1)` for 1% |
+| `isTransferToSender` | `boolean` | If `true`, the SDK calls `tx.transferObjects([coinOut], senderAddress)` internally, consuming the output coin and sending it to the wallet. Set `true` for standalone swaps. Omit or set `false` when composing — you must then consume `coinOut` yourself. |
 
 `Percentage` is exported from `@fullsailfinance/sdk`.
 
 ```typescript
 // Source: https://docs.fullsail.finance/developer/SDK
-// Router path — 2 calls: getSwapRoute → swapRouterTransaction
+// Router path — standalone swap (isTransferToSender: true)
 
 import { Percentage } from '@fullsailfinance/sdk'
 
-const from = '0x...'    // input token type address
-const target = '0x...'  // output token type address
-const amount = 1000000n
-const slippage = Percentage.fromNumber(1) // 1% slippage
+const router = await fullSailSDK.Swap.getSwapRoute({ from, target, amount })
 
-const router = await fullSailSDK.Swap.getSwapRoute({
-  from,
-  target,
-  amount,
-})
-
-// Returns [Transaction, coinOutId] — destructure to get the transaction
+// isTransferToSender: true — SDK transfers coinOut to sender internally
 const [transaction, coinOut] = await fullSailSDK.Swap.swapRouterTransaction({
   router,
-  slippage,
+  slippage: Percentage.fromNumber(1),
+  isTransferToSender: true,
 })
 const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+```typescript
+// Composable swap — coinOut passed downstream (e.g. into addLiquidityTransaction)
+// isTransferToSender omitted (false) — caller is responsible for consuming coinOut
+
+const [tx, coinOut] = await fullSailSDK.Swap.swapRouterTransaction({
+  router,
+  slippage: Percentage.fromNumber(1),
+  // isTransferToSender not set — coinOut is unconsumed
+})
+
+// coinOut MUST be consumed in the same tx — pass it to the next step
+// e.g. tx.transferObjects([coinOut], senderAddress), or feed into addLiquidityTransaction
 ```
 
 ---

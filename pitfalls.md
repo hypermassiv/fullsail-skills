@@ -243,6 +243,39 @@ const priceUpdateData = await connection.getPriceFeedsUpdateData([
 
 ---
 
+### ERR-12: Not Consuming the Output Coin from `swapRouterTransaction`
+
+**Failure mode:** `swapRouterTransaction` returns `[tx, coinOut]` where `coinOut` is an unconsumed `TransactionObjectArgument`. Signing and submitting `tx` without consuming `coinOut` causes a Sui "dangling object" transaction error — every object touched in a transaction must be consumed.
+
+**Correct behavior:** Either set `isTransferToSender: true` (SDK transfers `coinOut` to the sender internally), or pass `coinOut` into a downstream call within the same transaction (e.g. an `addLiquidity` step in a compound bot).
+
+**Rule:** **Always consume the `coinOut` returned by `swapRouterTransaction`. Use `isTransferToSender: true` for standalone swaps. For composable flows, pass `coinOut` to the next step in the same transaction.**
+
+```typescript
+// WRONG — coinOut is dangling; tx will fail
+const [tx, coinOut] = await fullSailSDK.Swap.swapRouterTransaction({ router, slippage })
+await wallet.signAndExecuteTransaction({ transaction: tx })
+```
+
+```typescript
+// CORRECT (standalone) — isTransferToSender: true consumes coinOut internally
+const [tx, coinOut] = await fullSailSDK.Swap.swapRouterTransaction({
+  router,
+  slippage,
+  isTransferToSender: true,
+})
+await wallet.signAndExecuteTransaction({ transaction: tx })
+```
+
+```typescript
+// CORRECT (composable) — coinOut passed downstream in the same tx
+const [tx, coinOut] = await fullSailSDK.Swap.swapRouterTransaction({ router, slippage })
+tx.transferObjects([coinOut], senderAddress) // or feed into addLiquidityTransaction
+await wallet.signAndExecuteTransaction({ transaction: tx })
+```
+
+---
+
 ### Pre-Flight Checklist
 
 Before executing any Full Sail transaction, verify:
@@ -253,6 +286,7 @@ Before executing any Full Sail transaction, verify:
 - [ ] Position stake status determined before selecting claim method ([§Staked vs Unstaked Claim Path](rewards.md#staked-vs-unstaked-claim-path))
 - [ ] Transaction signed and executed via wallet client — not just constructed ([§Transaction Lifecycle Model](protocol-fundamentals.md#transaction-lifecycle-model))
 - [ ] Pyth price IDs have `0x` prefix stripped before passing to Hermes/`getPriceFeedsUpdateData` ([§ERR-11](#err-11-passing-0x-prefixed-price-ids-to-pyth-hermes))
+- [ ] `swapRouterTransaction` output coin consumed — either `isTransferToSender: true` or passed downstream in the same tx ([§ERR-12](#err-12-not-consuming-the-output-coin-from-swaproutertransaction))
 
 ---
 
