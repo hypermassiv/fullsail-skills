@@ -10,11 +10,20 @@ The Full Sail SDK provides two swap paths — a router path (2 calls) and a dire
 
 Returns an optimized route across pools via the Aftermath router.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `from` | `string` | Coin type address of the input token |
-| `target` | `string` | Coin type address of the output token |
-| `amount` | `bigint \| string \| number` | Amount of input token in base units |
+_Verified against `dist/index.js` and `dist/index.d.ts`._
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `from` | `string` | YES | Coin type address of the input token |
+| `target` | `string` | YES | Coin type address of the output token |
+| `amount` | `BN \| string \| number \| bigint` | YES | Amount of input token in base units |
+| `providers` | `string[]` | NO | Subset of available router providers; defaults to all |
+| `excludeOracleProviders` | `boolean` | NO | Removes oracle-dependent providers (HAEDAL, STEAMM_OMM, etc.) |
+| `depth` | `number` | NO | Routing depth |
+| `splitAlgorithm` | `string` | NO | Split algorithm selection |
+| `splitFactor` | `number` | NO | Split factor |
+| `splitCount` | `number` | NO | Split count |
+| `liquidityChanges` | `PreSwapLpChangeParams[]` | NO | Simulated LP changes to apply before routing |
 
 Return value: Returns a `SwapRoute` object — pass it as `router` to `swapRouterTransaction`. The route structure is opaque; do not enumerate or manipulate its fields.
 
@@ -36,17 +45,41 @@ const router = await fullSailSDK.Swap.getSwapRoute({
 
 ### Swap.swapRouterTransaction()
 
-Builds the unsigned swap transaction using a router route.
+Builds the unsigned swap transaction. Has two call signatures depending on the swap path used.
 
 **Returns a tuple `[Transaction, TransactionObjectArgument]` — `[0]` is the transaction to sign; `[1]` is the output coin object argument.**
 
 > **Output coin must be consumed.** The returned `coinOut` is an unconsumed `TransactionObjectArgument`. Every Sui transaction must consume every object it touches — if `coinOut` is not transferred or passed into another call within the same transaction, the transaction will fail with a "dangling object" error. Use `isTransferToSender: true` for standalone swaps, or pass `coinOut` to a downstream call (e.g. `addLiquidityTransaction`) for composable flows.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `router` | `SwapRoute` | Route object from `getSwapRoute()` — pass directly |
-| `slippage` | `Percentage` | `Percentage` object — e.g. `Percentage.fromNumber(1)` for 1% |
-| `isTransferToSender` | `boolean` | If `true`, the SDK calls `tx.transferObjects([coinOut], senderAddress)` internally, consuming the output coin and sending it to the wallet. Set `true` for standalone swaps. Omit or set `false` when composing — you must then consume `coinOut` yourself. |
+#### Router-path signature (use with `getSwapRoute`)
+
+_Verified against `dist/index.d.ts`._
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `router` | `SwapRoute` | YES | Route object from `getSwapRoute()` — pass directly |
+| `slippage` | `Percentage` | YES | `Percentage` object — e.g. `Percentage.fromNumber(1)` for 1% |
+| `inputCoin` | `TransactionObjectArgument` | NO | Pre-built coin object for composable flows. If omitted, SDK fetches coin assets from sender and builds internally. Pass when chaining transactions to avoid double-spend. |
+| `isTransferToSender` | `boolean` | NO | If `true`, the SDK calls `tx.transferObjects([coinOut], senderAddress)` internally, consuming the output coin and sending it to the wallet. Set `true` for standalone swaps. Omit or set `false` when composing — you must then consume `coinOut` yourself. |
+
+#### Direct-pool-path signature (use without `getSwapRoute`)
+
+`swapRouterTransaction` also accepts a direct pool call signature that bypasses the router. Use this when you already know the pool and want to skip route discovery.
+
+_Verified against `dist/index.js`._
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `pool` | `SuiObjectId` | YES | Pool object ID |
+| `coinTypeA` | `string` | YES | Pool's token A type |
+| `coinTypeB` | `string` | YES | Pool's token B type |
+| `a2b` | `boolean` | YES | Swap direction (A-to-B) |
+| `byAmountIn` | `boolean` | YES | `true`: amount is input; `false`: amount is desired output |
+| `amount` | `bigint` | YES | Swap amount in base units |
+| `amountLimit` | `bigint` | YES | Min output or max input (slippage guard) |
+| `inputCoin` | `TransactionObjectArgument` | NO | Pre-built coin object for composable flows. If omitted, SDK auto-splits from wallet. Pass when chaining transactions to avoid double-spend. |
+| `isTransferToSender` | `boolean` | NO | If `true`, SDK transfers `coinOut` to sender internally. Set `true` for standalone swaps. |
+| `senderAddress` | `string` | YES | Sender wallet address |
 
 `Percentage` is exported from `@fullsailfinance/sdk`.
 
