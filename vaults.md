@@ -82,19 +82,24 @@ Opens a new vault position by depositing tokens. Uses `PortEntry.createPortEntry
 
 > **PRECONDITION:** The pool must have vault support enabled (compass icon). Confirm `pool.gauge_id` is defined before proceeding.
 
-| Parameter | Type | Source |
-|-----------|------|--------|
-| `coinTypeA` | `SuiCoinType` | Pool token A type |
-| `coinTypeB` | `SuiCoinType` | Pool token B type |
-| `amountA` | `bigint` | Token A deposit amount in base units |
-| `amountB` | `bigint` | Token B deposit amount in base units |
-| `poolId` | `SuiObjectId` | From `pool.id` (backend API) |
-| `gaugeId` | `SuiObjectId` | From `pool.gauge_id` (backend API) |
-| `portId` | `SuiObjectId` | From `ports[0].id` (backend API) |
-| `pythPriceIdA/B` | `string \| null` | From `Port.getPythPriceFeedId()` |
-| `aggregatorPriceIdA/B` | `string \| null` | From `Port.getAggregatorPriceId()` |
-| `rewardCoinTypes` | `SuiCoinType[]` | Reward token types for the port (from `port.rewards`) |
-| `currentOSailCoinType` | `SuiCoinType` | Active oSAIL coin type |
+| Parameter | Type | Required | Source/Notes |
+|-----------|------|----------|--------------|
+| `portId` | `string` | Yes | From `ports[0].id` via `sdk.api.pools.byAddressDetail()` |
+| `gaugeId` | `string` | Yes | From `pool.gauge_id` via `sdk.api.pools.byAddressDetail()` |
+| `pythPriceIdA` | `string \| null \| undefined` | Yes (null ok) | From `Port.getPythPriceFeedId({ coinType: coinTypeA })` |
+| `pythPriceIdB` | `string \| null \| undefined` | Yes (null ok) | From `Port.getPythPriceFeedId({ coinType: coinTypeB })` |
+| `aggregatorPriceIdA` | `string \| null \| undefined` | Yes (null ok) | From `Port.getAggregatorPriceId({ coinType: coinTypeA })` |
+| `aggregatorPriceIdB` | `string \| null \| undefined` | Yes (null ok) | From `Port.getAggregatorPriceId({ coinType: coinTypeB })` |
+| `coinTypeA` | `string` | Yes | Pool token A type |
+| `coinTypeB` | `string` | Yes | Pool token B type |
+| `rewardCoinTypes` | `string[]` | Yes | Reward coin types for this port — from `ports[0].rewards.map(r => r.token.address)`. NOTE: field is `rewardCoinTypes` here, but `portRewardCoinTypes` in add/remove/close (see naming trap below) |
+| `amountA` | `bigint` | Yes | Token A deposit amount in base units |
+| `amountB` | `bigint` | Yes | Token B deposit amount in base units |
+| `currentOSailCoinType` | `string` | Yes | Active oSAIL coin type from `Coin.getCurrentEpochOSail().address` |
+| `poolId` | `string` | Yes | Pool object ID from `pool.id` (backend API) |
+| `senderAddress` | `string` | Yes | Wallet address |
+
+> **Naming trap:** `createPortEntryTransaction` uses `rewardCoinTypes`. The add/remove/close functions use `portRewardCoinTypes` instead. Do not copy field names between create and add/remove/close — see ERR-15.
 
 Returns unsigned `Transaction` — must be signed and submitted separately.
 
