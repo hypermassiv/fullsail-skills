@@ -141,26 +141,107 @@ const result = await wallet.signAndExecuteTransaction({ transaction })
 
 ---
 
+### Add Liquidity to Vault
+
+Increases an existing vault position. Uses `PortEntry.addLiquidityTransaction()`.
+
+> **PRECONDITION:** You need the user's `portEntryId` — the Sui object ID of their existing PortEntry — from their owned objects on-chain.
+
+> **8 reward parameters required.** Unlike `createPortEntryTransaction`, the add/remove/close functions require reward-related parameters (`portRewardCoinTypes`, `poolRewardCoinTypes`, `oSailRewards`, `currentOSailCoinType`, `oSailDecimals`, `sailPrice`, `rewardChoice`, `slippage`) because these operations also harvest pending rewards. An agent omitting these will get transaction failure.
+
+| Parameter | Type | Required | Notes |
+|-----------|------|----------|-------|
+| `coinTypeA` | `SuiCoinType` | Yes | Pool token A type |
+| `coinTypeB` | `SuiCoinType` | Yes | Pool token B type |
+| `amountA` | `bigint` | Yes | Token A amount to add in base units |
+| `amountB` | `bigint` | Yes | Token B amount to add in base units |
+| `poolId` | `SuiObjectId` | Yes | From backend API |
+| `gaugeId` | `SuiObjectId` | Yes | From backend API |
+| `portId` | `SuiObjectId` | Yes | From backend API |
+| `portEntryId` | `SuiObjectId` | Yes | User's existing PortEntry object ID |
+| `pythPriceIdA` | `string \| null \| undefined` | Yes (null ok) | From `Port.getPythPriceFeedId({ coinType: coinTypeA })` |
+| `pythPriceIdB` | `string \| null \| undefined` | Yes (null ok) | From `Port.getPythPriceFeedId({ coinType: coinTypeB })` |
+| `aggregatorPriceIdA` | `string \| null \| undefined` | Yes (null ok) | From `Port.getAggregatorPriceId({ coinType: coinTypeA })` |
+| `aggregatorPriceIdB` | `string \| null \| undefined` | Yes (null ok) | From `Port.getAggregatorPriceId({ coinType: coinTypeB })` |
+| `portRewardCoinTypes` | `SuiCoinType[]` | Yes | Incentive reward types for the port. Pass `[]` if none. NOT `rewardCoinTypes`. |
+| `poolRewardCoinTypes` | `SuiCoinType[]` | Yes | Pool trading reward types. Pass `[]` if none. |
+| `oSailRewards` | `Array<{ coinType, amount, expired }>` | Yes | Pending oSAIL rewards. Obtain via `PortEntry.getOSailRewards()` then enrich with `expired` field (see pattern below). Pass `[]` if none. |
+| `currentOSailCoinType` | `SuiCoinType` | Yes | Active oSAIL coin type from `Coin.getCurrentEpochOSail().address` |
+| `oSailDecimals` | `number` | Yes | oSAIL token decimals (typically 6) |
+| `sailPrice` | `number` | Yes | Current SAIL token price in USD — NO SDK method, must use external source |
+| `rewardChoice` | `'sail' \| 'usd' \| 'vesail'` | Yes | How to exercise oSAIL rewards — `'vesail'` locks into veSAIL, `'sail'` swaps to SAIL, `'usd'` swaps to USDC |
+| `slippage` | `Percentage` | Yes | Used for oSAIL exercise swap calculations |
+
+> **`sailPrice` has no SDK method.** You must obtain the current SAIL token price from an external source (CoinGecko API, DeFi Llama, or on-chain price oracle). There is no `getSailPrice()` in the SDK.
+
+> **`rewardChoice` values:** `'sail'` (swap oSAIL to SAIL), `'usd'` (swap oSAIL to USDC), `'vesail'` (lock oSAIL into veSAIL). These are lowercase strings, NOT enum constants.
+
+**`oSailRewards.expired` field population pattern.** `PortEntry.getOSailRewards()` returns `Array<{ coinType, amount }>` — it does NOT include the `expired` field. However, `addLiquidityTransaction` (and removeLiquidity/close) requires `expired: boolean` in each `oSailRewards` entry. To populate `expired`, cross-reference each reward's `coinType` against `Coin.getOSailMap()`:
+
+```typescript
+// Step 1: Get raw oSAIL rewards (no expired field)
+const rawRewards = await sdk.PortEntry.getOSailRewards({
+  portId, portEntryId, coinTypeA, coinTypeB,
+  currentOSailCoinType, gaugeId, poolId,
+})
+// Returns: Array<{ coinType: SuiCoinType, amount: bigint }>
+
+// Step 2: Get oSAIL expiry map
+const oSailMap = await sdk.Coin.getOSailMap()
+// Returns map of coinType -> { expiration_timestamp, ... }
+
+// Step 3: Enrich with expired field
+const now = Date.now()
+const oSailRewards = rawRewards.map(r => ({
+  coinType: r.coinType,
+  amount: r.amount,
+  expired: oSailMap[r.coinType]
+    ? now > Number(oSailMap[r.coinType].expiration_timestamp)
+    : true, // treat unknown as expired for safety
+}))
+```
+
+> **Low-confidence pattern.** The `expired` field population via `Coin.getOSailMap()` cross-reference is derived from SDK type analysis. Verify against testnet before production use.
+
+---
+
 ### Vault Withdrawal
 
-Exits a vault position partially or fully. Use `removeLiquidityTransaction()` to withdraw a portion; use `closeTransaction()` to withdraw everything and destroy the PortEntry object.
+Exits a vault position partially. Use `removeLiquidityTransaction()` to withdraw a portion; use `closeTransaction()` to withdraw everything and destroy the PortEntry object.
 
 > **PRECONDITION:** You need the user's `portEntryId` — the Sui object ID of their PortEntry — from their owned objects on-chain.
 
-`PortEntryRemoveLiquidityParams` extends the deposit params with additional fields:
+`removeLiquidityTransaction` requires all the reward params from `addLiquidityTransaction`, plus five additional position-state fields:
 
-| Additional parameter | Type | Description |
-|----------------------|------|-------------|
-| `portEntryId` | `SuiObjectId` | User's PortEntry object ID |
-| `volume` | `bigint` | Share volume to withdraw |
-| `amountA` / `amountB` | `bigint` | Current position token amounts (for slippage calc) |
-| `tickLower` / `tickUpper` | `number` | Current position tick range |
-| `liquidity` | `bigint` | Current position liquidity |
-| `currentSqrtPrice` | `bigint` | Current pool sqrt price |
-| `slippage` | `Percentage` | Maximum acceptable slippage |
-| `portRewardCoinTypes` | `SuiCoinType[]` | Port incentive reward types |
-| `poolRewardCoinTypes` | `SuiCoinType[]` | Pool trading reward types |
-| `oSailRewards` | `Array<{ coinType, amount, expired }>` | Pending oSAIL rewards |
+| Parameter | Type | Required | Notes |
+|-----------|------|----------|-------|
+| `coinTypeA` | `SuiCoinType` | Yes | Pool token A type |
+| `coinTypeB` | `SuiCoinType` | Yes | Pool token B type |
+| `poolId` | `SuiObjectId` | Yes | From backend API |
+| `gaugeId` | `SuiObjectId` | Yes | From backend API |
+| `portId` | `SuiObjectId` | Yes | From backend API |
+| `portEntryId` | `SuiObjectId` | Yes | User's PortEntry object ID |
+| `volume` | `bigint` | Yes | Share volume to withdraw (NOT `liquidityAmount`) |
+| `amountA` | `bigint` | Yes | Current position token A amount (for slippage calc) |
+| `amountB` | `bigint` | Yes | Current position token B amount (for slippage calc) |
+| `tickLower` | `number` | Yes | Current position lower tick |
+| `tickUpper` | `number` | Yes | Current position upper tick |
+| `liquidity` | `bigint` | Yes | Current position liquidity |
+| `currentSqrtPrice` | `bigint` | Yes | Current pool sqrt price |
+| `slippage` | `Percentage` | Yes | Used for slippage calc and oSAIL exercise |
+| `pythPriceIdA` | `string \| null \| undefined` | Yes (null ok) | From `Port.getPythPriceFeedId({ coinType: coinTypeA })` |
+| `pythPriceIdB` | `string \| null \| undefined` | Yes (null ok) | From `Port.getPythPriceFeedId({ coinType: coinTypeB })` |
+| `aggregatorPriceIdA` | `string \| null \| undefined` | Yes (null ok) | From `Port.getAggregatorPriceId({ coinType: coinTypeA })` |
+| `aggregatorPriceIdB` | `string \| null \| undefined` | Yes (null ok) | From `Port.getAggregatorPriceId({ coinType: coinTypeB })` |
+| `portRewardCoinTypes` | `SuiCoinType[]` | Yes | Port incentive reward types. Pass `[]` if none. |
+| `poolRewardCoinTypes` | `SuiCoinType[]` | Yes | Pool trading reward types. Pass `[]` if none. |
+| `oSailRewards` | `Array<{ coinType, amount, expired }>` | Yes | Pending oSAIL rewards. Pass `[]` if none. |
+| `currentOSailCoinType` | `SuiCoinType` | Yes | Active oSAIL coin type |
+| `oSailDecimals` | `number` | Yes | oSAIL token decimals (typically 6) |
+| `sailPrice` | `number` | Yes | Current SAIL price in USD — NO SDK method, must use external source |
+| `rewardChoice` | `'sail' \| 'usd' \| 'vesail'` | Yes | oSAIL exercise choice |
+
+The five fields distinguishing `removeLiquidityTransaction` from `addLiquidityTransaction` are: `volume`, `tickLower`, `tickUpper`, `liquidity`, `currentSqrtPrice`. All five describe the current on-chain position state.
 
 ```typescript
 // Partial withdrawal — remove liquidity but keep PortEntry alive
@@ -171,32 +252,53 @@ const transaction = await fullSailSDK.PortEntry.removeLiquidityTransaction({
   gaugeId,
   portId,
   portEntryId,
-  volume,            // bigint — share volume to withdraw
+  volume,              // bigint — share volume to withdraw
   pythPriceIdA,
   pythPriceIdB,
   aggregatorPriceIdA,
   aggregatorPriceIdB,
-  // Position state for slippage calculation:
+  // Position state (current on-chain values):
   amountA, amountB, tickLower, tickUpper, liquidity, currentSqrtPrice,
   slippage,
   // Reward claim params (pass empty arrays if no pending rewards):
   portRewardCoinTypes,
   poolRewardCoinTypes,
-  oSailRewards,
-  // ... additional reward claim fields (see PortEntryClaimAllRewardsParam)
-})
-
-// Full exit — withdraws all liquidity and destroys the PortEntry object
-const transaction = await fullSailSDK.PortEntry.closeTransaction({
-  // Same params as removeLiquidityTransaction, plus:
-  // portEntryId is also used for the destroy call (included via PortEntryCloseParams)
-  ...removeLiquidityParams,
+  oSailRewards,        // enriched with expired field via Coin.getOSailMap()
+  currentOSailCoinType,
+  oSailDecimals,
+  sailPrice,           // from external source — no SDK method
+  rewardChoice,        // 'sail' | 'usd' | 'vesail'
 })
 
 const result = await wallet.signAndExecuteTransaction({ transaction })
 ```
 
-**Use `closeTransaction()` when fully exiting — it destroys the PortEntry object and reclaims the deposit. Use `removeLiquidityTransaction()` for partial exits.**
+**Use `removeLiquidityTransaction()` for partial exits. Use `closeTransaction()` to fully exit and destroy the PortEntry.**
+
+---
+
+### Close Vault Position
+
+Fully exits a vault position and destroys the PortEntry object. Uses `PortEntry.closeTransaction()`.
+
+`closeTransaction` accepts the same parameters as `removeLiquidityTransaction` — identical fields, no additions or removals. It withdraws all liquidity and then destroys the PortEntry NFT on-chain. Use this to fully exit a vault position.
+
+```typescript
+// Full exit — withdraws all liquidity and destroys the PortEntry object
+const transaction = await fullSailSDK.PortEntry.closeTransaction({
+  // Identical params to removeLiquidityTransaction:
+  coinTypeA, coinTypeB, poolId, gaugeId, portId, portEntryId,
+  volume, amountA, amountB, tickLower, tickUpper, liquidity, currentSqrtPrice,
+  slippage,
+  pythPriceIdA, pythPriceIdB, aggregatorPriceIdA, aggregatorPriceIdB,
+  portRewardCoinTypes, poolRewardCoinTypes, oSailRewards,
+  currentOSailCoinType, oSailDecimals, sailPrice, rewardChoice,
+})
+
+const result = await wallet.signAndExecuteTransaction({ transaction })
+```
+
+**`closeTransaction()` destroys the PortEntry NFT on-chain via `vault.port.destoryPortEntry`. After this call the user's PortEntry object no longer exists.**
 
 ---
 
