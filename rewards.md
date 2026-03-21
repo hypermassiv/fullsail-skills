@@ -1,3 +1,5 @@
+> SDK version: v9.0.0 | Audit date: 2026-03-21
+
 ## Rewards and oSAIL
 
 This section covers reward claim patterns split by stake state. Before selecting a claim method, determine whether a position is staked or unstaked using the detection pattern in ## Liquidity Positions.
@@ -242,7 +244,7 @@ const result = await wallet.signAndExecuteTransaction({ transaction })
 
 ### Staked Position: claimOSailAndStakedPoolRewardsTransaction()
 
-Combined call — claims both oSAIL and pool rewards in a single transaction for staked positions. Prefer this over two separate calls.
+Combined call — claims both oSAIL and pool rewards in a single transaction for staked positions. The claimed oSAIL is immediately exercised according to `rewardChoice`. Prefer this over two separate calls.
 
 **Returns unsigned Transaction — must be signed and submitted separately.**
 
@@ -255,8 +257,18 @@ Combined call — claims both oSAIL and pool rewards in a single transaction for
 | `gaugeId` | `string` | From Backend Pool — `pool.gauge_id` |
 | `oSailCoinType` | `string` | Current epoch oSAIL coin type — `currentEpochOSail.address` from `fullSailSDK.Coin.getCurrentEpochOSail()` |
 | `rewardCoinTypes` | `string[]` | Array of all reward coin type addresses for this pool |
+| `rewardChoice` | `'sail' \| 'usd' \| 'vesail'` | How to exercise the claimed oSAIL |
+| `positionUpdatedAt` | `number` | Position update timestamp — `position.updated_at` |
+| `oSailAmount` | `bigint` | Amount of oSAIL to exercise. Pass `0n` if no oSAIL is pending |
+| `slippage` | `Percentage` | For oSAIL exercise swap calculations |
+| `oSailExpired?` | `boolean` | Whether the oSAIL is expired |
+| `newLockDurationDays?` | `number` | Lock duration in days — only when `rewardChoice: 'vesail'` |
+| `newLockIsPermanent?` | `boolean` | Permanent lock flag — only when `rewardChoice: 'vesail'` |
+| `permanentLockId?` | `string` | Existing permanent lock to increase — only when `rewardChoice: 'vesail'` |
 
 **Precondition: position must be staked. This combined method replaces both `claimOSailTransaction` and `claimStakedPoolRewardsTransaction` — do not call all three.**
+
+**`rewardChoice` controls oSAIL exercise:** `'sail'` swaps to SAIL, `'usd'` swaps to USDC, `'vesail'` locks as veSAIL. Pass `oSailAmount: 0n` if no oSAIL is pending to skip oSAIL exercise.
 
 ```typescript
 // Source: https://docs.fullsail.finance/developer/SDK
@@ -277,6 +289,14 @@ const transaction = await fullSailSDK.Position.claimOSailAndStakedPoolRewardsTra
   gaugeId: pool.gauge_id,
   oSailCoinType: currentEpochOSail.address, // fresh call required — not cached
   rewardCoinTypes,
+  rewardChoice: 'sail',              // 'sail' | 'usd' | 'vesail'
+  positionUpdatedAt: position.updated_at,
+  oSailAmount: 0n,                   // pass 0n if no oSAIL is pending
+  slippage: 0.005,                   // 0.5% slippage tolerance
+  // oSailExpired: false,            // optional — set if oSAIL is expired
+  // newLockDurationDays: 365,       // optional — only when rewardChoice: 'vesail'
+  // newLockIsPermanent: false,      // optional — only when rewardChoice: 'vesail'
+  // permanentLockId: '0x...',       // optional — existing permanent lock to increase
 })
 
 const result = await wallet.signAndExecuteTransaction({ transaction })
