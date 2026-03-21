@@ -130,9 +130,9 @@ Computes swap estimates for a direct pool swap. Must be called before `swapTrans
 | `amount` | `bigint` | Swap amount (input if `byAmountIn=true`; desired output if `false`) |
 | `byAmountIn` | `boolean` | `true`: amount is input; `false`: amount is desired output |
 | `isAtoB` | `boolean` | Swap direction — always derive: `chainPool.coinTypeA === coinInType`. Never hardcode. |
-| `currentSqrtPrice` | `number` | From Chain Pool (`getByIdFromChain`) — must be real-time |
+| `currentSqrtPrice` | `bigint` | From Chain Pool (`getByIdFromChain`) — must be real-time. Type is `bigint`, not `number` (ERR-16). |
 
-Return value: Returns `{ estimatedAmountOut, estimatedAmountIn, swapParams }`. The `swapParams` field is an opaque object — spread it directly into `swapTransaction`: `...presSwap.swapParams`.
+Return value: Returns `PreSwapResult` containing `estimatedAmountOut: bigint`, `estimatedAmountIn: bigint`, `estimatedEndSqrtPrice: bigint`, `estimatedFeeAmount: bigint`, `isExceed: boolean`, `currentSqrtPrice: bigint`, `amount: bigint`, and `swapParams` (see `swapTransaction` below). The `swapParams` field is `Pick<SwapParams, 'coinTypeA' | 'coinTypeB' | 'byAmountIn' | 'poolId' | 'isAtoB'>` — spread it directly into `swapTransaction`.
 
 **Always derive `isAtoB` from the pool's `coinTypeA` field: `const isAtoB = chainPool.coinTypeA === coinInType`. Never hardcode `isAtoB`.**
 
@@ -142,16 +142,25 @@ Return value: Returns `{ estimatedAmountOut, estimatedAmountIn, swapParams }`. T
 
 ### Swap.swapTransaction()
 
-Builds the unsigned swap transaction for a direct pool swap.
+Builds the unsigned swap transaction for a direct pool swap. Requires a prior `preSwap` call — its output provides 5 of the parameters.
 
 **Returns unsigned transaction — must be signed and submitted via `wallet.signAndExecuteTransaction()`.**
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `amount` | `bigint` | Same amount passed to `preSwap` |
-| `amountLimit` | `bigint` | Min output if `byAmountIn=true` (`presSwap.estimatedAmountOut`); max input if `false` (`presSwap.estimatedAmountIn`) |
-| `slippage` | `Percentage` | `Percentage` object (e.g., `Percentage.fromNumber(1)` for 1%) |
-| `...presSwap.swapParams` | spread | Remaining parameters from `preSwap` output — spread directly |
+_Verified against `dist/index.js`._
+
+| Parameter | Type | Required | Source | Description |
+|-----------|------|----------|--------|-------------|
+| `amount` | `bigint` | YES | Caller | Same amount passed to `preSwap` |
+| `amountLimit` | `bigint` | YES | Caller | Min output if `byAmountIn=true` (`presSwap.estimatedAmountOut`); max input if `false` (`presSwap.estimatedAmountIn`) |
+| `slippage` | `Percentage` | YES | Caller | `Percentage` object (e.g., `Percentage.fromNumber(1)` for 1%) |
+| `coinTypeA` | `string` | YES | From `presSwap.swapParams` | Pool's token A type |
+| `coinTypeB` | `string` | YES | From `presSwap.swapParams` | Pool's token B type |
+| `poolId` | `SuiObjectId` | YES | From `presSwap.swapParams` | Pool object ID |
+| `isAtoB` | `boolean` | YES | From `presSwap.swapParams` | Swap direction |
+| `byAmountIn` | `boolean` | YES | From `presSwap.swapParams` | `true`: amount is input; `false`: amount is desired output |
+| `partner` | `string` | NO | Caller | Optional partner address |
+
+The 5 `presSwap.swapParams` fields (`coinTypeA`, `coinTypeB`, `poolId`, `isAtoB`, `byAmountIn`) are typically supplied via spread (`...presSwap.swapParams`) in code, but they are explicit named parameters — not an opaque blob. Do NOT add `inputCoin` or `isTransferToSender` here; those belong to `swapRouterTransaction`.
 
 ---
 
