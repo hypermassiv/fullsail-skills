@@ -276,6 +276,164 @@ await wallet.signAndExecuteTransaction({ transaction: tx })
 
 ---
 
+### ERR-13: Missing Reward Parameters in PortEntry Add/Remove/Close
+
+**Failure mode:** Agent calls `addLiquidityTransaction`, `removeLiquidityTransaction`, or `closeTransaction` without providing the reward-related parameters (`portRewardCoinTypes`, `poolRewardCoinTypes`, `oSailRewards`, `currentOSailCoinType`, `oSailDecimals`, `sailPrice`, `rewardChoice`), causing transaction failure.
+
+**Correct behavior:** These operations also harvest pending rewards — all reward parameters are required even if the agent only wants to add/remove liquidity. Pass empty arrays for reward types if no rewards are pending.
+
+**Rule:** **PortEntry add/remove/close always require reward parameters — these operations harvest rewards as a side effect.**
+
+```typescript
+// WRONG — missing reward parameters; transaction will fail
+const tx = await fullSailSDK.Port.addLiquidityTransaction({
+  portId,
+  coinTypes,
+  amounts,
+  // reward parameters omitted — this will fail
+});
+```
+
+```typescript
+// CORRECT — all reward parameters included
+const tx = await fullSailSDK.Port.addLiquidityTransaction({
+  portId,
+  coinTypes,
+  amounts,
+  portRewardCoinTypes: port.reward_coin_types ?? [],   // from port object; empty array if none
+  poolRewardCoinTypes: pool.rewarder_infos.map(r => r.coinAddress),
+  oSailRewards: port.osail_rewards ?? [],              // array with `expired` field populated
+  currentOSailCoinType: currentOSail.address,          // from Coin.getCurrentEpochOSail()
+  oSailDecimals: 9,
+  sailPrice,                                           // from external source — see ERR-14
+  rewardChoice: 'sail',                                // 'sail' | 'usd' | 'vesail'
+});
+```
+
+**See:** [§Vaults and PortEntry > addLiquidityTransaction](vaults.md#addliquiditytransaction)
+
+---
+
+### ERR-14: `sailPrice` Has No SDK Method
+
+**Failure mode:** Agent searches for `getSailPrice()` or similar in the SDK, finds nothing, and either omits the parameter or passes `0`.
+
+**Correct behavior:** `sailPrice` must be obtained from an external price API or on-chain oracle. No SDK method exists for this value.
+
+**Rule:** **`sailPrice` is an external dependency — obtain from CoinGecko, DeFi Llama, or an on-chain oracle. The SDK does not provide this.**
+
+Sources:
+- CoinGecko API: `https://api.coingecko.com/api/v3/simple/price?ids=sail&vs_currencies=usd`
+- DeFi Llama: `https://coins.llama.fi/prices/current/sui:{SAIL_CONTRACT_ADDRESS}`
+- On-chain oracle: query Pyth or Switchboard for SAIL/USD feed
+
+**See:** [§Vaults and PortEntry > addLiquidityTransaction](vaults.md#addliquiditytransaction)
+
+---
+
+### ERR-15: `rewardCoinTypes` vs `portRewardCoinTypes` Naming Trap
+
+**Failure mode:** Agent copies the `rewardCoinTypes` field name from `createPortEntryTransaction` into `addLiquidityTransaction`, `removeLiquidityTransaction`, or `closeTransaction` — gets a type/field error because add/remove/close use `portRewardCoinTypes`.
+
+**Correct behavior:** Use `rewardCoinTypes` for create, `portRewardCoinTypes` for add/remove/close.
+
+**Rule:** **Field name changes between create and add/remove/close: `rewardCoinTypes` (create) vs `portRewardCoinTypes` (add/remove/close). Always use the exact field name for each function.**
+
+```typescript
+// createPortEntryTransaction uses rewardCoinTypes
+const tx = await fullSailSDK.Port.createPortEntryTransaction({
+  // ...
+  rewardCoinTypes: port.reward_coin_types,   // ← rewardCoinTypes for CREATE
+});
+
+// addLiquidityTransaction / removeLiquidityTransaction / closeTransaction use portRewardCoinTypes
+const tx = await fullSailSDK.Port.addLiquidityTransaction({
+  // ...
+  portRewardCoinTypes: port.reward_coin_types,  // ← portRewardCoinTypes for ADD/REMOVE/CLOSE
+});
+```
+
+**See:** [§Vaults and PortEntry](vaults.md)
+
+---
+
+### ERR-16: `preSwap.currentSqrtPrice` Is `bigint`, Not `number`
+
+**Failure mode:** Agent passes `currentSqrtPrice` as a `number` type to `preSwap()`, causing silent precision loss or a type error at runtime.
+
+**Correct behavior:** Pass `currentSqrtPrice` as `bigint`. If sourcing from a pool data object, convert explicitly with `BigInt(pool.currentSqrtPrice)`. If the chain pool object already returns `bigint`, pass it directly.
+
+**Rule:** **`preSwap` `currentSqrtPrice` is `bigint` — do not pass as `number`.**
+
+```typescript
+// WRONG — number type causes precision loss or type error
+const presSwap = await fullSailSDK.Swap.preSwap({
+  pool,
+  currentSqrtPrice: pool.currentSqrtPrice as number, // WRONG: loses precision
+  // ...
+});
+```
+
+```typescript
+// CORRECT — pass as bigint
+const presSwap = await fullSailSDK.Swap.preSwap({
+  pool,
+  currentSqrtPrice: BigInt(pool.currentSqrtPrice), // CORRECT: bigint
+  // ...
+});
+```
+
+**See:** [§Swaps > preSwap](swaps.md#preswap)
+
+---
+
+### ERR-17: `swapTransaction` Requires `preSwap` Result
+
+**Failure mode:** Agent calls `swapTransaction` without calling `preSwap()` first, missing the required swap parameters (`swapParams`).
+
+**Correct behavior:** `swapTransaction` is a two-step flow: call `preSwap()` first, then spread the result's `swapParams` into `swapTransaction`. The SDK's actual variable name for the `preSwap` result is `presSwap` (one 'e' in "pres", no second 'e') — this is the SDK's naming convention, not a typo. Always use `presSwap.swapParams` when spreading into `swapTransaction`.
+
+**Rule:** **`swapTransaction` requires a prior `preSwap()` call — spread `presSwap.swapParams` into the transaction call. Note: `presSwap` (without the second 'e') is the SDK's actual variable name for the result, not a typo.**
+
+```typescript
+// WRONG — calling swapTransaction without preSwap; missing required swapParams
+const tx = await fullSailSDK.Swap.swapTransaction({
+  pool,
+  coinTypeA,
+  coinTypeB,
+  // swapParams is missing — transaction will fail
+});
+```
+
+```typescript
+// CORRECT — two-step flow: preSwap first, then swapTransaction
+// Step 1: call preSwap to get swap parameters
+// Note: SDK names the result `presSwap` (not `preSwap`) — this is intentional SDK naming
+const presSwap = await fullSailSDK.Swap.preSwap({
+  pool,
+  currentSqrtPrice: BigInt(pool.currentSqrtPrice),
+  coinTypeA,
+  coinTypeB,
+  decimalsA,
+  decimalsB,
+  a2b,
+  byAmountIn,
+  amount,
+});
+
+// Step 2: spread presSwap.swapParams into swapTransaction
+const tx = await fullSailSDK.Swap.swapTransaction({
+  pool,
+  coinTypeA,
+  coinTypeB,
+  ...presSwap.swapParams,  // spread the preSwap result — `presSwap` is the SDK's variable name
+});
+```
+
+**See:** [§Swaps > swapTransaction](swaps.md#swaptransaction), [§Swaps > Direct Pool Swap 4-step sequence](swaps.md#direct-pool-swap)
+
+---
+
 ### Pre-Flight Checklist
 
 Before executing any Full Sail transaction, verify:
