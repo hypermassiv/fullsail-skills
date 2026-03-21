@@ -149,7 +149,11 @@ const result = await wallet.signAndExecuteTransaction({ transaction })
 
 Claims accrued oSAIL emissions for a staked position.
 
-**Returns unsigned Transaction — must be signed and submitted separately.**
+**Returns `Promise<[Transaction, oSailCoin]>` — a tuple.** The `oSailCoin` (`TransactionObjectArgument`) is unconsumed and MUST be handled:
+
+> **oSailCoin is not auto-transferred.** The second element of the return tuple is a `TransactionObjectArgument` that must be consumed before submitting. Either:
+> - Set `sendToSender: true` in params (SDK auto-transfers oSAIL to sender — simplest option)
+> - Or destructure `const [tx, oSailCoin] = await claimOSailTransaction(...)` and use `oSailCoin` in a downstream transaction command
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -159,6 +163,7 @@ Claims accrued oSAIL emissions for a staked position.
 | `positionStakeId` | `string` | Stake object ID — `position.stake_info.id` |
 | `oSailCoinType` | `string` | Current epoch oSAIL coin type — `currentEpochOSail.address` from `fullSailSDK.Coin.getCurrentEpochOSail()` |
 | `gaugeId` | `string` | From Backend Pool — `pool.gauge_id` |
+| `sendToSender?` | `boolean` | When `true`, the SDK automatically transfers the oSailCoin to the sender, avoiding a dangling object. Default: `false`. |
 
 **Precondition: position must be staked (`position.stake_info` exists). `positionStakeId` is `position.stake_info.id` — never hardcode.**
 
@@ -166,21 +171,27 @@ Claims accrued oSAIL emissions for a staked position.
 
 ```typescript
 // Source: https://docs.fullsail.finance/developer/SDK
-// Returns unsigned Transaction — must be signed and submitted separately
+// Returns Promise<[Transaction, oSailCoin]> — tuple; oSailCoin must be consumed
 
 const pool = await fullSailSDK.Pool.getById(poolId)
 const position = await fullSailSDK.Position.getById(positionId)
 // Call getCurrentEpochOSail() fresh — never use a cached value
 const currentEpochOSail = await fullSailSDK.Coin.getCurrentEpochOSail()
 
-const transaction = await fullSailSDK.Position.claimOSailTransaction({
+// Option A: sendToSender: true — SDK auto-transfers oSAIL to sender (simplest)
+const [transaction, oSailCoin] = await fullSailSDK.Position.claimOSailTransaction({
   coinTypeA: pool.token_a.address,
   coinTypeB: pool.token_b.address,
   poolId,
   positionStakeId: position.stake_info.id, // never hardcode — always from position.stake_info.id
   oSailCoinType: currentEpochOSail.address, // fresh call required — not cached
   gaugeId: pool.gauge_id,
+  sendToSender: true, // auto-transfers oSailCoin to sender — omit if consuming oSailCoin manually
 })
+
+// Option B: omit sendToSender and consume oSailCoin manually in a downstream step
+// const [transaction, oSailCoin] = await fullSailSDK.Position.claimOSailTransaction({...})
+// oSailCoin must be used in a downstream transaction command — DO NOT submit with a dangling oSailCoin
 
 const result = await wallet.signAndExecuteTransaction({ transaction })
 ```
