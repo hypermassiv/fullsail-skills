@@ -1,3 +1,5 @@
+> SDK version: v9.0.0 | Audit date: 2026-03-21
+
 ## Locks and veSAIL
 
 The veSAIL lock lifecycle — create, increase, merge, split, transfer, and toggle permanent status — is managed via the `Lock` namespace. All `*Transaction` methods return unsigned `Transaction` objects and must be signed and submitted separately. Governance voting (`batchVoteTransaction`) is documented in ## Governance Voting.
@@ -120,17 +122,20 @@ Extends the duration of an existing time-limited lock. Not applicable to permane
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | lockId | string | ID of the existing lock to extend |
-| durationDays | number | Lock duration in days — likely additive (adds to remaining duration) based on the underlying `increaseUnlockTime` contract method name, but not yet confirmed on testnet (MEDIUM confidence) |
+| durationDays | number | Number of days to ADD to the current lock expiry — **VERIFIED ADDITIVE** (extends from current expiry, not from today). Source: dist/index.js `increaseUnlockTime` contract call passes `durationDays` as u64 to Move method `increase_unlock_time`. |
 
 **Returns unsigned Transaction — must be signed and submitted separately.**
 
-**`durationDays` is likely additive — passing `365` probably extends the lock by 1 year from its current expiry, not from now. Evidence: the underlying contract method is `increaseUnlockTime`, which implies adding time. However, this has not been confirmed on testnet (MEDIUM confidence — deferred to v1.3 VER-07).**
+**`durationDays` is ADDITIVE — verified against `dist/index.js`:** The value extends the current lock end time forward by the specified number of days. It does NOT recalculate from today. The underlying Move contract method is `increase_unlock_time` — "increase" semantics means the duration is added to the current remaining lock time.
+
+**Example:** If a lock expires in 30 days and you call `increaseDurationTransaction({ lockId, durationDays: 60 })`, the lock now expires in 90 days (30 + 60), not 60 days from today.
 
 **Not applicable to permanent locks — permanent locks have no expiry and cannot have their duration modified via this method.**
 
 ```typescript
 // Returns unsigned Transaction — must be signed and submitted separately
-// durationDays is likely additive (extends from current expiry), not absolute — MEDIUM confidence, see note above
+// durationDays is ADDITIVE (verified) — extends current expiry by this many days, not from today
+// Example: lock expires in 30 days + durationDays: 60 = new expiry in 90 days
 
 const transaction = await fullSailSDK.Lock.increaseDurationTransaction({
   lockId,
@@ -257,10 +262,13 @@ Toggles the permanent status of a lock. Permanent locks have no expiry and provi
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | lockId | string | Permanent lock to convert back to time-limited |
+| `isVoted` | `boolean` | (optional) Set `true` if the lock has active governance votes. The SDK handles vote cleanup before disabling permanent status. |
 
 **Both methods return unsigned Transaction — must be signed and submitted separately.**
 
 **Disable permanent status using `disablePermanentTransaction()` before calling `mergeTransaction()` or `splitTransaction()` if the lock has Auto-Max Lock (permanent) enabled.**
+
+**`isVoted` parameter:** Pass `true` if the lock currently has active governance votes. Omitting this when the lock has votes may result in incomplete state cleanup. Check governance vote status before disabling.
 
 **After `disablePermanentTransaction()`, the lock becomes time-limited. Duration behavior after disable is not explicitly documented in SDK — verify from SDK source if precision is needed.**
 
@@ -273,8 +281,11 @@ Toggles the permanent status of a lock. Permanent locks have no expiry and provi
 const enableTx = await fullSailSDK.Lock.enablePermanentTransaction({ lockId })
 const result1 = await wallet.signAndExecuteTransaction({ transaction: enableTx })
 
-// Disable permanent lock (call before mergeTransaction or splitTransaction if lock is permanent)
-const disableTx = await fullSailSDK.Lock.disablePermanentTransaction({ lockId })
+// Disable permanent lock
+const disableTx = await fullSailSDK.Lock.disablePermanentTransaction({
+  lockId,
+  isVoted: false, // set true if lock has active governance votes
+})
 const result2 = await wallet.signAndExecuteTransaction({ transaction: disableTx })
 ```
 
