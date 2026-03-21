@@ -1,3 +1,5 @@
+> SDK version: v9.0.0 | Audit date: 2026-03-21
+
 ## Liquidity Positions
 
 This section covers the five position lifecycle operations (open, add, stake, remove, close) and tick range computation — all `*Transaction` calls return unsigned transactions that must be signed and submitted separately.
@@ -46,7 +48,7 @@ Opens a new concentrated liquidity position. Supply `gaugeId` to auto-stake on c
 | `amountB` | `bigint` | Max amount of token B in base units |
 | `slippage` | `Percentage` | Slippage tolerance |
 | `fixedAmountA` | `boolean` | `true`: fix token A amount; `false`: fix token B amount |
-| `currentSqrtPrice` | `number` | From Chain Pool (`Pool.getByIdFromChain()`) — must be real-time |
+| `currentSqrtPrice` | `bigint` | From Chain Pool (`Pool.getByIdFromChain()`) — must be real-time |
 | `gaugeId` | `string` | (optional) From Backend Pool (`Pool.getById()`) — omit to leave position unstaked |
 
 **`gaugeId` comes from Backend Pool (`Pool.getById()`). `currentSqrtPrice` comes from Chain Pool (`Pool.getByIdFromChain()`). Both fetches are required.**
@@ -112,14 +114,19 @@ Adds liquidity to an existing position. Staked positions require three extra par
 | `amountB` | `bigint` | Max amount of token B in base units |
 | `slippage` | `Percentage` | Slippage tolerance |
 | `fixedAmountA` | `boolean` | `true`: fix token A amount; `false`: fix token B amount |
-| `currentSqrtPrice` | `number` | From Chain Pool — must be real-time |
+| `currentSqrtPrice` | `bigint` | From Chain Pool — must be real-time |
 | `gaugeId` | `string` | (staked only) From Backend Pool (`Pool.getById()`) |
 | `oSailCoinType` | `string` | (staked only) From `Coin.getCurrentEpochOSail().address` |
 | `positionStakeId` | `string` | (staked only) From `position.stake_info.id` |
+| `oSailAmount` | `bigint` | (staked only) Amount of pending oSAIL rewards to claim during the operation. Pass `0n` if no oSAIL is pending. |
+| `rewardChoice` | `'sail' \| 'usd' \| 'vesail'` | (staked only) How to receive the claimed oSAIL reward. |
+| `positionUpdatedAt` | `number` | (staked only) Timestamp from the on-chain position object (`position.updated_at`). Callers must fetch the current position state before calling staked-path operations. |
 
 **Only oSAIL is auto-claimed during this transaction. Trading fees and pool rewards are NOT auto-claimed — call the appropriate claim method separately.**
 
-**For staked positions, all three extra params (`gaugeId`, `oSailCoinType`, `positionStakeId`) must be supplied together or not at all.**
+**For staked positions, all six extra params (`gaugeId`, `oSailCoinType`, `positionStakeId`, `oSailAmount`, `rewardChoice`, `positionUpdatedAt`) must be supplied together or not at all.**
+
+**If your position is staked, you MUST include `oSailAmount`, `rewardChoice`, and `positionUpdatedAt`. Omitting these for a staked position will cause a runtime error.**
 
 ```typescript
 // Source: https://docs.fullsail.finance/developer/SDK
@@ -129,6 +136,7 @@ Adds liquidity to an existing position. Staked positions require three extra par
 const chainPool = await fullSailSDK.Pool.getByIdFromChain(poolId)
 const pool = await fullSailSDK.Pool.getById(poolId)               // needed for gauge_id (staked only)
 const currentEpochOSail = await fullSailSDK.Coin.getCurrentEpochOSail()
+const position = await fullSailSDK.Position.getById(positionId)   // needed for positionUpdatedAt (staked only)
 
 const transaction = await fullSailSDK.Position.addLiquidityTransaction({
   coinTypeA: chainPool.coinTypeA,
@@ -142,10 +150,13 @@ const transaction = await fullSailSDK.Position.addLiquidityTransaction({
   slippage,
   fixedAmountA,
   currentSqrtPrice: chainPool.currentSqrtPrice,
-  // Required only if position is staked — supply all three or none:
+  // Required only if position is staked — supply all six or none:
   gaugeId: pool.gauge_id,
   oSailCoinType: currentEpochOSail.address,
   positionStakeId: position.stake_info?.id,
+  oSailAmount: 0n, // pending oSAIL amount; pass 0n if none pending
+  rewardChoice: 'sail', // 'sail' | 'usd' | 'vesail'
+  positionUpdatedAt: position.updated_at,
 })
 ```
 
@@ -200,16 +211,21 @@ const transaction = await fullSailSDK.Position.stakeTransaction({
 | `positionId` | `string` | Position object ID |
 | `tickLower` | `number` | `position.tick_lower` |
 | `tickUpper` | `number` | `position.tick_upper` |
-| `currentSqrtPrice` | `number` | From Chain Pool — must be real-time |
+| `currentSqrtPrice` | `bigint` | From Chain Pool — must be real-time |
 | `liquidity` | `bigint` | Liquidity units to remove — derive from position object |
 | `slippage` | `Percentage` | Slippage tolerance |
 | `gaugeId` | `string` | (staked only) From Backend Pool (`Pool.getById()`) |
 | `oSailCoinType` | `string` | (staked only) From `Coin.getCurrentEpochOSail().address` |
 | `positionStakeId` | `string` | (staked only) From `position.stake_info.id` |
+| `oSailAmount` | `bigint` | (staked only) Amount of pending oSAIL rewards to claim during the operation. Pass `0n` if no oSAIL is pending. |
+| `rewardChoice` | `'sail' \| 'usd' \| 'vesail'` | (staked only) How to receive the claimed oSAIL reward. |
+| `positionUpdatedAt` | `number` | (staked only) Timestamp from the on-chain position object (`position.updated_at`). Callers must fetch the current position state before calling staked-path operations. |
 
 **Only oSAIL is auto-claimed during this transaction. Trading fees and pool rewards require separate claim calls.**
 
 **`liquidity` is the number of liquidity units to remove — derive from the position object, not from token amounts.**
+
+**If your position is staked, you MUST include `oSailAmount`, `rewardChoice`, and `positionUpdatedAt`. Omitting these for a staked position will cause a runtime error.**
 
 ```typescript
 // WRONG — no separate unstakeTransaction exists in the SDK
@@ -233,6 +249,7 @@ const removeTx = await fullSailSDK.Position.removeLiquidityTransaction({
 const chainPool = await fullSailSDK.Pool.getByIdFromChain(poolId)
 const pool = await fullSailSDK.Pool.getById(poolId)               // needed for gauge_id (staked only)
 const currentEpochOSail = await fullSailSDK.Coin.getCurrentEpochOSail()
+const position = await fullSailSDK.Position.getById(positionId)   // needed for positionUpdatedAt (staked only)
 
 const transaction = await fullSailSDK.Position.removeLiquidityTransaction({
   coinTypeA: chainPool.coinTypeA,
@@ -248,6 +265,9 @@ const transaction = await fullSailSDK.Position.removeLiquidityTransaction({
   gaugeId: pool.gauge_id,
   oSailCoinType: currentEpochOSail.address,
   positionStakeId: position.stake_info?.id,
+  oSailAmount: 0n, // pending oSAIL amount; pass 0n if none pending
+  rewardChoice: 'sail', // 'sail' | 'usd' | 'vesail'
+  positionUpdatedAt: position.updated_at,
 })
 ```
 
@@ -267,17 +287,22 @@ Closes the position, removes all liquidity, and claims all rewards (oSAIL, fees,
 | `positionId` | `string` | Position object ID |
 | `tickLower` | `number` | `position.tick_lower` |
 | `tickUpper` | `number` | `position.tick_upper` |
-| `currentSqrtPrice` | `number` | From Chain Pool — must be real-time |
+| `currentSqrtPrice` | `bigint` | From Chain Pool — must be real-time |
 | `liquidity` | `bigint` | `position.liquidity` — full position liquidity |
 | `slippage` | `Percentage` | Slippage tolerance |
 | `rewardCoinTypes` | `string[]` | Complete list of all reward coin type addresses for this pool — must be exhaustive |
 | `gaugeId` | `string` | (staked only) From Backend Pool (`Pool.getById()`) |
 | `oSailCoinType` | `string` | (staked only) From `Coin.getCurrentEpochOSail().address` |
 | `positionStakeId` | `string` | (staked only) From `position.stake_info.id` |
+| `oSailAmount` | `bigint` | (staked only) Amount of pending oSAIL rewards to claim during the operation. Pass `0n` if no oSAIL is pending. |
+| `rewardChoice` | `'sail' \| 'usd' \| 'vesail'` | (staked only) How to receive the claimed oSAIL reward. |
+| `positionUpdatedAt` | `number` | (staked only) Timestamp from the on-chain position object (`position.updated_at`). Callers must fetch the current position state before calling staked-path operations. |
 
 **`rewardCoinTypes` must be the complete list of all reward coin type addresses for this pool. An incomplete array causes partial reward loss — rewards not listed are not claimed.**
 
 **All rewards (oSAIL, fees, pool rewards) are claimed atomically within `closeTransaction`. No separate claim calls are needed after close.**
+
+**If your position is staked, you MUST include `oSailAmount`, `rewardChoice`, and `positionUpdatedAt`. Omitting these for a staked position will cause a runtime error.**
 
 ```typescript
 // Source: https://docs.fullsail.finance/developer/SDK
@@ -287,6 +312,7 @@ Closes the position, removes all liquidity, and claims all rewards (oSAIL, fees,
 const chainPool = await fullSailSDK.Pool.getByIdFromChain(poolId)
 const pool = await fullSailSDK.Pool.getById(poolId)               // needed for gauge_id (staked only)
 const currentEpochOSail = await fullSailSDK.Coin.getCurrentEpochOSail()
+const position = await fullSailSDK.Position.getById(positionId)   // needed for positionUpdatedAt (staked only)
 
 const transaction = await fullSailSDK.Position.closeTransaction({
   coinTypeA: chainPool.coinTypeA,
@@ -303,6 +329,9 @@ const transaction = await fullSailSDK.Position.closeTransaction({
   gaugeId: pool.gauge_id,
   oSailCoinType: currentEpochOSail.address,
   positionStakeId: position.stake_info?.id,
+  oSailAmount: 0n, // pending oSAIL amount; pass 0n if none pending
+  rewardChoice: 'sail', // 'sail' | 'usd' | 'vesail'
+  positionUpdatedAt: position.updated_at,
 })
 ```
 
