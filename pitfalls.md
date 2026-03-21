@@ -446,6 +446,25 @@ Before executing any Full Sail transaction, verify:
 - [ ] Pyth price IDs have `0x` prefix stripped before passing to Hermes/`getPriceFeedsUpdateData` ([§ERR-11](#err-11-passing-0x-prefixed-price-ids-to-pyth-hermes))
 - [ ] `swapRouterTransaction` output coin consumed — either `isTransferToSender: true` or passed downstream in the same tx ([§ERR-12](#err-12-not-consuming-the-output-coin-from-swaproutertransaction))
 
+#### Swap Operations
+
+- [ ] For `swapRouterTransaction`: decided whether `isTransferToSender: true` or plan to consume returned `coinOut` ([ERR-12](#err-12-not-consuming-the-output-coin-from-swaproutertransaction))
+- [ ] For `swapRouterTransaction` in composed transactions: passing `inputCoin` from upstream step if applicable
+- [ ] For `preSwap`: passing `currentSqrtPrice` as `bigint`, not `number` ([ERR-16](#err-16-preswap-currentsqrtprice-is-bigint-not-number))
+- [ ] For `swapTransaction`: called `preSwap()` first and passing result as `presSwap.swapParams` spread ([ERR-17](#err-17-swaptransaction-requires-preswap-result))
+
+#### Vault / PortEntry Operations
+
+- [ ] Have `portId` from `getPortsByPoolId(poolId)` or backend API
+- [ ] Have `gaugeId` from port object or `pool.gauge_id` — confirmed non-undefined (vault supported)
+- [ ] Have `pythPriceIds` with `0x` prefix stripped ([ERR-11](#err-11-passing-0x-prefixed-price-ids-to-pyth-hermes))
+- [ ] For add/remove/close: using `portRewardCoinTypes` (not `rewardCoinTypes`) ([ERR-15](#err-15-rewardcointypes-vs-portrewardcointypes-naming-trap))
+- [ ] For add/remove/close: have `poolRewardCoinTypes` separately from port rewards
+- [ ] For add/remove/close: have `oSailRewards` array with `expired` field populated
+- [ ] For add/remove/close: have `currentOSailCoinType` for current epoch
+- [ ] For add/remove/close: have `sailPrice` from external source — no SDK method ([ERR-14](#err-14-sailprice-has-no-sdk-method))
+- [ ] For add/remove/close: have `rewardChoice` set to one of `'sail' | 'usd' | 'vesail'` ([ERR-13](#err-13-missing-reward-parameters-in-portentry-addremoveclose))
+
 ---
 
 ## Source of Truth
