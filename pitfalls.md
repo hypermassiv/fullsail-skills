@@ -434,6 +434,123 @@ const tx = await fullSailSDK.Swap.swapTransaction({
 
 ---
 
+### ERR-18: Missing staked-path params on `addLiquidityTransaction`
+
+**Failure mode:** Agent calls `addLiquidityTransaction` on a staked position with only the standard 3 staked params (`gaugeId`, `positionStakeId`, `oSailCoinType`), omitting `oSailAmount`, `rewardChoice`, and `positionUpdatedAt`. The transaction fails at runtime.
+
+**Correct behavior:** For staked positions, `addLiquidityTransaction` requires 6 staked params — not 3. The SDK destructures `oSailAmount`, `rewardChoice`, and `positionUpdatedAt` from the same params object. All must be supplied when the position is staked.
+
+**Rule:** **For staked positions, `addLiquidityTransaction` requires all 6 staked params: `gaugeId`, `positionStakeId`, `oSailCoinType`, `oSailAmount`, `rewardChoice`, and `positionUpdatedAt`.** Pass `oSailAmount: 0n` if no oSAIL is pending. Get `positionUpdatedAt` from `position.updated_at` (fetch fresh position state before calling).
+
+**See:** [§Liquidity Positions > addLiquidityTransaction](liquidity.md)
+
+---
+
+### ERR-19: Missing staked-path params on `removeLiquidityTransaction`
+
+**Failure mode:** Agent calls `removeLiquidityTransaction` on a staked position with only the standard 3 staked params, omitting `oSailAmount`, `rewardChoice`, and `positionUpdatedAt`. The transaction fails at runtime.
+
+**Correct behavior:** Same as ERR-18 — `removeLiquidityTransaction` also requires all 6 staked params for staked positions.
+
+**Rule:** **For staked positions, `removeLiquidityTransaction` requires all 6 staked params: `gaugeId`, `positionStakeId`, `oSailCoinType`, `oSailAmount`, `rewardChoice`, and `positionUpdatedAt`.** Pass `oSailAmount: 0n` if no oSAIL is pending.
+
+**See:** [§Liquidity Positions > removeLiquidityTransaction](liquidity.md)
+
+---
+
+### ERR-20: Missing staked-path params on `closeTransaction`
+
+**Failure mode:** Agent calls `closeTransaction` on a staked position with only the standard 3 staked params, omitting `oSailAmount`, `rewardChoice`, and `positionUpdatedAt`. The transaction fails at runtime.
+
+**Correct behavior:** Same pattern as ERR-18 and ERR-19 — `closeTransaction` also requires all 6 staked params for staked positions.
+
+**Rule:** **For staked positions, `closeTransaction` requires all 6 staked params: `gaugeId`, `positionStakeId`, `oSailCoinType`, `oSailAmount`, `rewardChoice`, and `positionUpdatedAt`.** Pass `oSailAmount: 0n` if no oSAIL is pending.
+
+**See:** [§Liquidity Positions > closeTransaction](liquidity.md)
+
+---
+
+### ERR-21: `currentSqrtPrice` typed as `number` in position operations — SDK requires `bigint`
+
+**Failure mode:** Agent passes `currentSqrtPrice` as `number` to `openTransaction`, `addLiquidityTransaction`, `removeLiquidityTransaction`, or `closeTransaction`. This is a type mismatch — the SDK type is `bigint` in `PositionAdjustNotFixedAmountForSlippageParams` and `PositionCalcMinAmountsParams`.
+
+**Correct behavior:** The pool object returns `currentSqrtPrice` as `bigint` already — pass it directly without casting. Same class of error as ERR-16 (`preSwap`).
+
+**Rule:** **`currentSqrtPrice` is `bigint` in all position operation params — do not cast to `number`.** Pass `chainPool.currentSqrtPrice` directly; it is already the correct type.
+
+```typescript
+// WRONG — casting to number loses precision
+const transaction = await fullSailSDK.Position.addLiquidityTransaction({
+  currentSqrtPrice: Number(chainPool.currentSqrtPrice), // WRONG: loses precision, type error
+  // ...
+})
+```
+
+```typescript
+// CORRECT — pass bigint directly
+const transaction = await fullSailSDK.Position.addLiquidityTransaction({
+  currentSqrtPrice: chainPool.currentSqrtPrice, // CORRECT: already bigint
+  // ...
+})
+```
+
+**See:** [§Liquidity Positions > addLiquidityTransaction](liquidity.md), [ERR-16](#err-16-preswap-currentsqrtprice-is-bigint-not-number)
+
+---
+
+### ERR-22: `claimOSailTransaction` returns `[Transaction, oSailCoin]` — oSailCoin must be consumed
+
+**Failure mode:** Agent treats the return value of `claimOSailTransaction` as a single `Transaction` object and signs/submits it. The `oSailCoin` (`TransactionObjectArgument`) is left unconsumed, causing the transaction to fail with a dangling object error.
+
+**Correct behavior:** `claimOSailTransaction` returns `Promise<[Transaction, oSailCoin]>` — a tuple. The `oSailCoin` must either be transferred to the sender (via `sendToSender: true`) or consumed in a downstream transaction command before submitting.
+
+**Rule:** **Always destructure `claimOSailTransaction` as `const [tx, oSailCoin] = await ...`. Either pass `sendToSender: true` in params (simplest), or consume `oSailCoin` downstream in the same transaction.**
+
+```typescript
+// WRONG — treating return as a single Transaction
+const transaction = await fullSailSDK.Position.claimOSailTransaction({ ...params })
+// oSailCoin is unconsumed — transaction will fail
+
+// CORRECT Option A — sendToSender:true (SDK transfers oSAIL internally)
+const [tx, oSailCoin] = await fullSailSDK.Position.claimOSailTransaction({
+  ...params,
+  sendToSender: true, // oSAIL auto-transferred to sender; tx is self-contained
+})
+const result = await wallet.signAndExecuteTransaction({ transaction: tx })
+
+// CORRECT Option B — consume oSailCoin downstream
+const [tx, oSailCoin] = await fullSailSDK.Position.claimOSailTransaction({ ...params })
+// then pass oSailCoin to another tx command (e.g. lock creation) before submitting
+```
+
+**See:** [§Rewards > claimOSailTransaction](rewards.md)
+
+---
+
+### ERR-23: `claimOSailAndStakedPoolRewardsTransaction` missing required params
+
+**Failure mode:** Agent calls `claimOSailAndStakedPoolRewardsTransaction` with only the 7 base params (`coinTypeA`, `coinTypeB`, `poolId`, `gaugeId`, `positionStakeId`, `oSailCoinType`, `rewardCoinTypes`), omitting `rewardChoice`, `positionUpdatedAt`, `oSailAmount`, and `slippage`. The call fails with missing required fields.
+
+**Correct behavior:** The function requires 11 params — the 7 base params plus `rewardChoice`, `positionUpdatedAt`, `oSailAmount`, and `slippage` (all required). Additionally there are 4 optional params for veSAIL lock creation (`oSailExpired`, `newLockDurationDays`, `newLockIsPermanent`, `permanentLockId`).
+
+**Rule:** **`claimOSailAndStakedPoolRewardsTransaction` requires `rewardChoice`, `positionUpdatedAt`, `oSailAmount`, and `slippage` in addition to the 7 base params.** Pass `oSailAmount: 0n` if no oSAIL is pending.
+
+**See:** [§Rewards > claimOSailAndStakedPoolRewardsTransaction](rewards.md)
+
+---
+
+### ERR-24: `disablePermanentTransaction` missing `isVoted` param
+
+**Failure mode:** Agent disables a permanent lock that has active governance votes without passing `isVoted: true`. This may result in incomplete vote state cleanup.
+
+**Correct behavior:** `disablePermanentTransaction` accepts an optional `isVoted?: boolean` param. When the lock has active governance votes, set `isVoted: true` so the SDK performs the necessary vote cleanup before disabling permanent status.
+
+**Rule:** **Check whether the lock has active governance votes before calling `disablePermanentTransaction`. If it does, pass `isVoted: true`.**
+
+**See:** [§Locks and veSAIL > disablePermanentTransaction](locks.md)
+
+---
+
 ### Pre-Flight Checklist
 
 Before executing any Full Sail transaction, verify:
@@ -464,6 +581,23 @@ Before executing any Full Sail transaction, verify:
 - [ ] For add/remove/close: have `currentOSailCoinType` for current epoch
 - [ ] For add/remove/close: have `sailPrice` from external source — no SDK method ([ERR-14](#err-14-sailprice-has-no-sdk-method))
 - [ ] For add/remove/close: have `rewardChoice` set to one of `'sail' | 'usd' | 'vesail'` ([ERR-13](#err-13-missing-reward-parameters-in-portentry-addremoveclose))
+
+#### Position Operations
+
+- [ ] If position is staked, check `position.stake_info` and fetch current position state for `positionUpdatedAt` (`position.updated_at`) before calling addLiquidity/removeLiquidity/close ([ERR-18](#err-18-missing-staked-path-params-on-addliquiditytransaction), [ERR-19](#err-19-missing-staked-path-params-on-removeliquiditytransaction), [ERR-20](#err-20-missing-staked-path-params-on-closetransaction))
+- [ ] For staked positions: include all 6 staked params — `gaugeId`, `positionStakeId`, `oSailCoinType`, `oSailAmount`, `rewardChoice`, `positionUpdatedAt` ([ERR-18](#err-18-missing-staked-path-params-on-addliquiditytransaction))
+- [ ] Pass `currentSqrtPrice` as `bigint` in all position operations — not cast to `number` ([ERR-21](#err-21-currentsqrtprice-typed-as-number-in-position-operations--sdk-requires-bigint))
+- [ ] Pass `oSailAmount: 0n` if no oSAIL is pending (not undefined or omitted)
+
+#### Claim / Rewards Operations
+
+- [ ] Destructure `claimOSailTransaction` return as `const [tx, oSailCoin] = await ...` — either set `sendToSender: true` or consume `oSailCoin` downstream ([ERR-22](#err-22-claimosailtransaction-returns-transaction-osailtcoin--osailtcoin-must-be-consumed))
+- [ ] For `claimOSailAndStakedPoolRewardsTransaction`: include `rewardChoice`, `positionUpdatedAt`, `oSailAmount`, and `slippage` in addition to base params ([ERR-23](#err-23-claimosailandstakedpoolrewardstransaction-missing-required-params))
+
+#### Lock Operations
+
+- [ ] `increaseDurationTransaction` `durationDays` is ADDITIVE — adds to current lock expiry, not from today ([§increaseDurationTransaction](locks.md))
+- [ ] For `disablePermanentTransaction`: set `isVoted: true` if lock has active governance votes ([ERR-24](#err-24-disablepermanenttransaction-missing-isvoted-param))
 
 ---
 
