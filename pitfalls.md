@@ -312,7 +312,7 @@ const tx = await fullSailSDK.Port.addLiquidityTransaction({
 });
 ```
 
-**See:** [§Vaults and PortEntry > addLiquidityTransaction](vaults.md#addliquiditytransaction)
+**See:** [§Vaults and PortEntry > addLiquidityTransaction](vaults.md#add-liquidity-to-vault)
 
 ---
 
@@ -329,7 +329,7 @@ Sources:
 - DeFi Llama: `https://coins.llama.fi/prices/current/sui:{SAIL_CONTRACT_ADDRESS}`
 - On-chain oracle: query Pyth or Switchboard for SAIL/USD feed
 
-**See:** [§Vaults and PortEntry > addLiquidityTransaction](vaults.md#addliquiditytransaction)
+**See:** [§Vaults and PortEntry > addLiquidityTransaction](vaults.md#add-liquidity-to-vault)
 
 ---
 
@@ -385,7 +385,7 @@ const presSwap = await fullSailSDK.Swap.preSwap({
 });
 ```
 
-**See:** [§Swaps > preSwap](swaps.md#preswap)
+**See:** [§Swaps > preSwap](swaps.md#swappreswap)
 
 ---
 
@@ -432,7 +432,7 @@ const tx = await fullSailSDK.Swap.swapTransaction({
 });
 ```
 
-**See:** [§Swaps > swapTransaction](swaps.md#swaptransaction), [§Swaps > Direct Pool Swap 4-step sequence](swaps.md#direct-pool-swap)
+**See:** [§Swaps > swapTransaction](swaps.md#swapswaptransaction), [§Swaps > Direct Pool Swap 4-step sequence](swaps.md#direct-pool-swap-complete-4-step-sequence)
 
 ---
 
