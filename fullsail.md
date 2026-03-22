@@ -15,7 +15,7 @@ last-validated: 2026-03-20
 
 # Full Sail Skill
 
-**Version:** 1.3.0
+**Version:** 1.4.0
 **Last validated:** 2026-03-20
 **SDK:** `@fullsailfinance/sdk@9.0.0`
 **Network:** Sui Mainnet
