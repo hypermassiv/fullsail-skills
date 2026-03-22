@@ -1,3 +1,5 @@
+> SDK version: v9.0.0 | Audit date: 2026-03-21
+
 ## Vaults
 
 This section covers Full Sail's automated vault system — delegated liquidity management that deposits assets into a vault-managed position, auto-compounds fees and rewards, and adjusts ranges without manual intervention.

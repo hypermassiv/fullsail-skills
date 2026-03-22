@@ -1,3 +1,5 @@
+> SDK version: v9.0.0 | Audit date: 2026-03-21
+
 ## Swaps
 
 The Full Sail SDK provides two swap paths — a router path (2 calls) and a direct pool path (4 calls).

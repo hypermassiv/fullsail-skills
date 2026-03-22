@@ -1,3 +1,5 @@
+> SDK version: v9.0.0 | Audit date: 2026-03-21
+
 ## Pitfalls
 
 ### ERR-01: Treating `*Transaction()` Return as Submitted
@@ -548,6 +550,44 @@ const [tx, oSailCoin] = await fullSailSDK.Position.claimOSailTransaction({ ...pa
 **Rule:** **Check whether the lock has active governance votes before calling `disablePermanentTransaction`. If it does, pass `isVoted: true`.**
 
 **See:** [§Locks and veSAIL > disablePermanentTransaction](locks.md)
+
+---
+
+### ERR-25: Using `lockIds` instead of `locks` in `batchVoteTransaction`
+
+**Failure mode:** Agent calls `batchVoteTransaction` with `lockIds: [lockId1, lockId2]` (old parameter name). Inside the SDK, the method destructures `{ locks, votes }` — so `locks` receives `undefined`. The SDK immediately calls `locks.reduce(...)`, throwing a runtime TypeError: `Cannot read properties of undefined (reading 'reduce')`.
+
+**Correct behavior:** `batchVoteTransaction` accepts `locks: BatchVoteLock[]` — an array of objects with `id` (lock object ID) and `votingPower` (the lock's current veSAIL power as a bigint). The `lockIds` parameter does not exist in the current SDK.
+
+**Rule:** **Always pass `locks: BatchVoteLock[]` with `{ id, votingPower }` objects — never `lockIds: string[]`.** The old parameter name causes a silent undefined and a guaranteed runtime crash.
+
+```typescript
+// WRONG — lockIds does not exist in BatchVoteParams; locks will be undefined inside SDK
+const transaction = await fullSailSDK.Lock.batchVoteTransaction({
+  lockIds: [lockId1, lockId2], // ERROR: SDK destructures as { locks, votes } — locks is undefined
+  votes: [...],
+});
+// Throws: TypeError: Cannot read properties of undefined (reading 'reduce')
+```
+
+```typescript
+// CORRECT — locks: BatchVoteLock[] with id and votingPower per lock
+const lock1 = await fullSailSDK.Lock.getById(lockId1);
+const lock2 = await fullSailSDK.Lock.getById(lockId2);
+
+const transaction = await fullSailSDK.Lock.batchVoteTransaction({
+  locks: [
+    { id: lockId1, votingPower: lock1.locked_amount }, // votingPower from lock object
+    { id: lockId2, votingPower: lock2.locked_amount },
+  ],
+  votes: [
+    { poolId: poolId1, weight: 70n, volume: 5000000000n },
+    { poolId: poolId2, weight: 30n, volume: 2000000000n },
+  ],
+});
+```
+
+**See:** [§Governance Voting > Lock.batchVoteTransaction()](governance.md#lockbatchvotetransaction)
 
 ---
 

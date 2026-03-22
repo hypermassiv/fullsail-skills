@@ -1,3 +1,5 @@
+> SDK version: v9.0.0 | Audit date: 2026-03-21
+
 ## Prediction Voting
 
 This section covers Full Sail's prediction voting system, where veSAIL holders submit volume predictions for liquidity pools each epoch alongside their governance weight allocation. Prediction voting uses `Lock.batchVoteTransaction()` — the same method documented in `## Governance Voting` — the `volume` field in each vote entry IS the prediction; there is no separate prediction namespace or prediction-creation method.
