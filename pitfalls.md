@@ -638,6 +638,7 @@ Before executing any Full Sail transaction, verify:
 
 - [ ] `increaseDurationTransaction` `durationDays` is ADDITIVE — adds to current lock expiry, not from today ([§increaseDurationTransaction](locks.md))
 - [ ] For `disablePermanentTransaction`: set `isVoted: true` if lock has active governance votes ([ERR-24](#err-24-disablepermanenttransaction-missing-isvoted-param))
+- [ ] For `batchVoteTransaction`: use `locks: BatchVoteLock[]` with `{ id, votingPower }` objects — NOT `lockIds: string[]` ([ERR-25](#err-25-using-lockids-instead-of-locks-in-batchvotetransaction))
 
 ---
 

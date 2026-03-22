@@ -1,3 +1,5 @@
+> SDK version: v9.0.0 | Audit date: 2026-03-21
+
 ## Protocol Fundamentals
 
 ### SDK Installation and Initialization
@@ -14,14 +16,25 @@ npm i @mysten/sui
 Initialize the SDK once at application startup:
 
 ```typescript
+// Source: dist/index.d.ts verified against dist/index.js (2026-03-21)
 import { initFullSailSDK } from '@fullsailfinance/sdk'
 
 const fullSailSDK = initFullSailSDK({
-  network: 'mainnet-production',
-  fullNodeUrl: 'https://...',      // optional — uses default Full Sail RPC if omitted
-  simulationAccount: '0x...',       // optional
+  network: 'mainnet-production', // required — see valid values below
+  fullNodeUrl: 'https://...',    // optional — uses default Full Sail RPC if omitted
+  simulationAccount: '0x...',    // optional — required for preswap/simulation calls
 })
 ```
+
+**Valid `network` values (`SDKConfigNetwork`):**
+
+| Value | Environment |
+|-------|-------------|
+| `'mainnet-dev'` | Development / staging |
+| `'mainnet-production'` | Production mainnet |
+| `'mainnet-prediction'` | Prediction market variant |
+
+**The `network` parameter accepts exactly these three string literals. Passing any other value will cause the SDK to throw `SDKError('Unknown network: ...', 'InvalidNetwork')` at initialization.**
 
 ---
 
